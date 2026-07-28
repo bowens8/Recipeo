@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Larder — weekly meal planning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Public+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ===================== AUTH SCREEN ===================== -->
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="auth-brand-mark">🥕</span>
+      <h1>Larder</h1>
+      <p class="auth-tagline">Plan the week. Shop once. Waste less.</p>
+    </div>
+    <form id="auth-form">
+      <label>Email
+        <input type="email" id="auth-email" required autocomplete="email" />
+      </label>
+      <label>Password
+        <input type="password" id="auth-password" required autocomplete="current-password" minlength="6" />
+      </label>
+      <p id="auth-error" class="auth-error"></p>
+      <div class="auth-buttons">
+        <button type="submit" id="auth-signin-btn" class="btn btn-primary">Sign in</button>
+        <button type="button" id="auth-signup-btn" class="btn btn-ghost">Create account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== APP SHELL ===================== -->
+<div id="app-shell" class="app-shell hidden">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">🥕</span>
+      <span class="brand-name">Larder</span>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="plan">Week Plan</button>
+      <button class="tab-btn" data-tab="shopping">Shopping List</button>
+      <button class="tab-btn" data-tab="recipes">Recipes</button>
+      <button class="tab-btn" data-tab="pantry">Pantry</button>
+      <button class="tab-btn" data-tab="ingredients">Ingredients</button>
+    </nav>
+    <button id="signout-btn" class="signout-btn" title="Sign out">⎋</button>
+  </header>
+
+  <main class="content">
+
+    <!-- ---------- WEEK PLAN TAB ---------- -->
+    <section id="tab-plan" class="tab-panel active">
+      <div class="panel-head">
+        <div class="week-nav">
+          <button id="week-prev" class="icon-btn">←</button>
+          <h2 id="week-label">This Week</h2>
+          <button id="week-next" class="icon-btn">→</button>
+        </div>
+        <div class="week-calories" id="week-calories"></div>
+      </div>
+      <div id="week-grid" class="week-grid"></div>
+    </section>
+
+    <!-- ---------- SHOPPING LIST TAB ---------- -->
+    <section id="tab-shopping" class="tab-panel">
+      <div class="panel-head">
+        <h2>Shopping List</h2>
+        <div class="panel-head-right">
+          <span class="panel-sub">For the week shown in Week Plan — pantry items already subtracted.</span>
+          <button id="shopping-mode-btn" class="btn btn-ghost">Start Shopping</button>
+        </div>
+      </div>
+      <div class="store-picker">
+        <span class="store-picker-label">Shop from:</span>
+        <div id="store-checks" class="store-checks"></div>
+      </div>
+      <div id="shopping-total" class="shopping-total"></div>
+      <div id="shopping-list" class="shopping-list"></div>
+      <div id="shopping-mode-bar" class="shopping-mode-bar hidden">
+        <span id="shopping-mode-count">0 items checked</span>
+        <button id="finish-shopping-btn" class="btn btn-primary">Add checked items to pantry &amp; finish</button>
+      </div>
+    </section>
+
+    <!-- ---------- RECIPES TAB ---------- -->
+    <section id="tab-recipes" class="tab-panel">
+      <div class="panel-head">
+        <h2>Recipes</h2>
+        <button id="new-recipe-btn" class="btn btn-primary">+ New recipe</button>
+      </div>
+      <div id="recipe-list" class="card-grid"></div>
+    </section>
+
+    <!-- ---------- PANTRY TAB ---------- -->
+    <section id="tab-pantry" class="tab-panel">
+      <div class="panel-head">
+        <h2>Pantry</h2>
+        <span class="panel-sub">What you already have on hand. Subtracted automatically from your shopping list.</span>
+      </div>
+      <div id="pantry-list" class="pantry-list"></div>
+    </section>
+
+    <!-- ---------- INGREDIENTS TAB ---------- -->
+    <section id="tab-ingredients" class="tab-panel">
+      <div class="panel-head">
+        <h2>Ingredient Library</h2>
+        <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
+      </div>
+      <div id="ingredient-list" class="ingredient-table"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===================== MODALS ===================== -->
+<div id="modal-backdrop" class="modal-backdrop hidden">
+
+  <!-- Recipe editor -->
+  <div id="recipe-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3 id="recipe-modal-title">New recipe</h3>
+      <button class="icon-btn modal-close" data-close="recipe-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>Recipe name
+        <input type="text" id="recipe-name" placeholder="e.g. Weeknight Chicken Tacos" />
+      </label>
+      <label class="label-inline">Base servings
+        <input type="number" id="recipe-servings" min="1" value="4" style="width:80px" />
+      </label>
+
+      <h4>Ingredients</h4>
+      <div id="recipe-ingredients" class="recipe-ingredients"></div>
+      <button id="add-recipe-ingredient" class="btn btn-ghost btn-small">+ Add ingredient</button>
+
+      <h4>Steps</h4>
+      <div id="recipe-steps" class="recipe-steps"></div>
+      <button id="add-recipe-step" class="btn btn-ghost btn-small">+ Add step</button>
+
+      <div class="modal-actions">
+        <button id="delete-recipe-btn" class="btn btn-danger hidden">Delete recipe</button>
+        <button id="save-recipe-btn" class="btn btn-primary">Save recipe</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ingredient editor -->
+  <div id="ingredient-modal" class="modal hidden">
+    <div class="modal-head">
+      <h3 id="ingredient-modal-title">New ingredient</h3>
+      <button class="icon-btn modal-close" data-close="ingredient-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="label-inline">Emoji
+        <input type="text" id="ingredient-emoji" maxlength="4" placeholder="🥕" style="width:60px;text-align:center;font-size:1.4rem" />
+      </label>
+      <label>Name
+        <input type="text" id="ingredient-name" placeholder="e.g. Carrot" />
+      </label>
+      <div class="field-row">
+        <label>Unit
+          <select id="ingredient-unit">
+            <option value="g">grams (g)</option>
+            <option value="kg">kilograms (kg)</option>
+            <option value="ml">milliliters (ml)</option>
+            <option value="l">liters (l)</option>
+            <option value="cup">cup</option>
+            <option value="tbsp">tbsp</option>
+            <option value="tsp">tsp</option>
+            <option value="each">each / whole</option>
+            <option value="oz">oz</option>
+            <option value="lb">lb</option>
+          </select>
+        </label>
+        <label>Calories per unit
+          <input type="number" id="ingredient-calories" min="0" step="1" placeholder="e.g. 41 per 100g → enter per-unit value" />
+        </label>
+      </div>
+      <p class="hint">Enter calories for exactly one unit as selected above (e.g. calories per 1 gram, or per 1 each).</p>
+
+      <label>Grams per cup <span style="font-weight:400;color:var(--ink-soft)">(optional)</span>
+        <input type="number" id="ingredient-density" min="0" step="0.1" placeholder="e.g. 120 for flour" />
+      </label>
+      <p class="hint">Only needed if some recipes measure this ingredient by volume (cup/tbsp/tsp) and its
+        shopping unit above is a weight (g/kg/oz/lb) — or the reverse. This lets the shopping list convert
+        between them. Skip it if you always measure this ingredient the same way.</p>
+
+      <h4>Price per unit, by store</h4>
+      <div id="ingredient-prices" class="ingredient-prices"></div>
+      <p class="hint">Leave a store blank if you don't know the price there — the shopping list will just skip it for that item.</p>
+
+      <div class="modal-actions">
+        <button id="delete-ingredient-btn" class="btn btn-danger hidden">Delete</button>
+        <button id="save-ingredient-btn" class="btn btn-primary">Save ingredient</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meal slot picker -->
+  <div id="meal-modal" class="modal hidden">
+    <div class="modal-head">
+      <h3 id="meal-modal-title">Add meal</h3>
+      <button class="icon-btn modal-close" data-close="meal-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="meal-type-toggle">
+        <button class="toggle-btn active" data-mealtype="cook" id="toggle-cook">Cook something</button>
+        <button class="toggle-btn" data-mealtype="leftover" id="toggle-leftover">Eat leftovers</button>
+      </div>
+
+      <div id="meal-cook-fields">
+        <label>Recipe
+          <select id="meal-recipe-select"></select>
+        </label>
+        <div class="field-row">
+          <label>Servings to cook (batch)
+            <input type="number" id="meal-batch-servings" min="1" value="4" />
+          </label>
+          <label>Servings eaten today
+            <input type="number" id="meal-eaten-servings" min="0" value="4" />
+          </label>
+        </div>
+        <p class="hint" id="cook-hint">Leftover servings are automatically saved so you can schedule them later in the week.</p>
+      </div>
+
+      <div id="meal-leftover-fields" class="hidden">
+        <label>From
+          <select id="meal-leftover-select"></select>
+        </label>
+        <label>Servings eaten today
+          <input type="number" id="meal-leftover-servings" min="1" value="1" />
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button id="delete-meal-btn" class="btn btn-danger hidden">Remove meal</button>
+        <button id="save-meal-btn" class="btn btn-primary">Add to plan</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script type="module" src="firebase-config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
