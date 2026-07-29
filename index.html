@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Public+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
 </head>
 <body>
 
@@ -269,6 +271,24 @@
       <div class="modal-actions">
         <button id="delete-meal-btn" class="btn btn-danger hidden">Remove meal</button>
         <button id="save-meal-btn" class="btn btn-primary">Add to plan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Crop / zoom (shared by ingredient photo, recipe cover, and step photos) -->
+  <div id="crop-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3>Crop &amp; zoom</h3>
+      <button class="icon-btn modal-close" data-close="crop-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="crop-stage">
+        <img id="crop-image" alt="" />
+      </div>
+      <p class="hint">Drag to reposition, scroll or pinch to zoom, drag the corner handles to resize the crop area.</p>
+      <div class="modal-actions">
+        <button type="button" id="crop-cancel-btn" class="btn btn-ghost">Cancel</button>
+        <button type="button" id="crop-confirm-btn" class="btn btn-primary">Use this photo</button>
       </div>
     </div>
   </div>
