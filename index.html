@@ -275,11 +275,16 @@
     </div>
   </div>
 
-  <!-- Crop / zoom (shared by ingredient photo, recipe cover, and step photos) -->
-  <div id="crop-modal" class="modal modal-wide hidden">
+</div>
+
+<!-- Crop / zoom overlay — deliberately OUTSIDE #modal-backdrop and independent of it,
+     so it can sit on top of the recipe/ingredient editor without ever having to hide
+     or restore that editor. -->
+<div id="crop-overlay" class="modal-backdrop hidden">
+  <div id="crop-modal" class="modal modal-wide">
     <div class="modal-head">
       <h3>Crop &amp; zoom</h3>
-      <button class="icon-btn modal-close" data-close="crop-modal">✕</button>
+      <button class="icon-btn" id="crop-close-x">✕</button>
     </div>
     <div class="modal-body">
       <div class="crop-stage">
@@ -292,7 +297,6 @@
       </div>
     </div>
   </div>
-
 </div>
 
 <div id="toast" class="toast hidden"></div>
