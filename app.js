@@ -912,8 +912,18 @@ function renderShoppingList(){
     neededBase[ingId] = Math.max(0, neededBase[ingId] - haveBase);
   });
 
-  const rows = Object.entries(neededBase).filter(([id,qty]) => qty > 0.0001);
-  const warnRows = Object.values(unconverted).filter(r => r.qty > 0.0001);
+  // Drop anything left over that's within CLOSE_ENOUGH of zero, in the ingredient's OWN
+  // unit — not just a floating-point-noise epsilon. This matters most after Shopping
+  // Mode credits a rounded-up package purchase to the pantry (e.g. bought 8 oz for an
+  // 8.01 oz need): the tiny 0.01 oz "still short" shouldn't linger as its own line item
+  // demanding to be bought again.
+  const rows = Object.entries(neededBase).filter(([id, baseQty]) => {
+    const ing = state.ingredients[id];
+    if (!ing) return false;
+    const neededQtyInIngUnit = baseQty / (toBaseUnit(1, ing.unit) || 1);
+    return neededQtyInIngUnit >= CLOSE_ENOUGH;
+  });
+  const warnRows = Object.values(unconverted).filter(r => r.qty >= CLOSE_ENOUGH);
 
   if (rows.length === 0 && warnRows.length === 0){
     container.innerHTML = '<p class="shop-empty">Nothing to buy — plan some meals this week, or your pantry already covers it.</p>';
@@ -1100,16 +1110,14 @@ function renderRecipes(){
       <div class="rc-servings">makes ${r.baseServings} servings</div>
       <div class="rc-ingredients">${badges}</div>
       <div class="rc-cal">${cal>0? cal+' kcal / serving' : ''}</div>
-      <div class="rc-actions">
-        <button type="button" class="btn btn-ghost rc-overview-btn" data-id="${id}">📄 Overview</button>
-        <button type="button" class="btn ${cookBtnClass}" data-id="${id}">${cookBtnLabel}</button>
-      </div>
+      <button type="button" class="rc-overview-link" data-id="${id}">📄 Recipe overview</button>
+      <button type="button" class="btn ${cookBtnClass}" data-id="${id}">${cookBtnLabel}</button>
     </div>`;
   }).join('');
   container.querySelectorAll('.recipe-card').forEach(card=>{
     card.addEventListener('click', ()=> openRecipeModal(card.dataset.id));
   });
-  container.querySelectorAll('.rc-overview-btn').forEach(btn=>{
+  container.querySelectorAll('.rc-overview-link').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       try{ openRecipeOverview(btn.dataset.id); }
