@@ -260,8 +260,13 @@ input[type="file"]{
 /* ingredient price grid inside modal */
 .ingredient-prices{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
 .price-row{display:grid; grid-template-columns:110px 1fr; align-items:center; gap:10px;}
+.ingredient-prices.packaged .price-row{grid-template-columns:110px 1fr 110px;}
 .price-row span{font-size:.85rem; font-weight:600; color:var(--ink-soft);}
 .price-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono);}
+.price-row .package-size-input{display:none;}
+.ingredient-prices.packaged .price-row .package-size-input{display:block;}
+.checkbox-inline{display:flex; align-items:center; gap:9px; font-size:.88rem; font-weight:600; color:var(--ink); margin-bottom:8px;}
+.checkbox-inline input{margin:0;}
 
 /* ============ Photos (ingredient / recipe / step) ============ */
 .photo-preview{display:flex; align-items:center; gap:12px; margin:-6px 0 14px;}
