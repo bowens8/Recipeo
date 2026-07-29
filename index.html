@@ -208,8 +208,18 @@
         "2 tbsp honey", another says "50 g honey". Filling this in lets those combine correctly on the
         shopping list. A quick web search for "[ingredient] grams per cup" will give you a good number.</p>
 
-      <h4>Price per unit, by store <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional — add now or anytime later by reopening this ingredient)</span></h4>
-      <p class="hint" style="margin-top:-4px;">Leave blank for now if you don't know it yet — you can always come back and edit any ingredient to add or update prices.</p>
+      <h4>Pricing, by store <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional — add now or anytime later by reopening this ingredient)</span></h4>
+
+      <label class="checkbox-inline">
+        <input type="checkbox" id="ingredient-packaged" />
+        Sold in fixed-size packages (a bag, box, or block) — not bought as an exact amount
+      </label>
+      <p class="hint" style="margin-top:-6px;">Check this for things like a box of pasta or a block of cheese.
+        Leave it unchecked for things sold as exactly what you need, like deli meat sliced to order. When
+        checked, enter each store's package size below (in this ingredient's unit above) — the shopping list
+        will round up to the number of whole packages you'd actually need to buy, and any extra left over
+        from rounding up gets automatically added to your pantry once you check it off while shopping.</p>
+
       <div id="ingredient-prices" class="ingredient-prices"></div>
       <p class="hint">Leave a store blank if you don't know the price there — the shopping list will just skip it for that item.</p>
 
