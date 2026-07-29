@@ -236,7 +236,11 @@ function openModal(id){
   document.querySelectorAll('.modal').forEach(m=>m.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 }
-function closeModals(){ backdrop.classList.add('hidden'); }
+function closeModals(){
+  backdrop.classList.add('hidden');
+  if (typeof cropperInstance !== 'undefined' && cropperInstance){ cropperInstance.destroy(); cropperInstance = null; }
+  cropConfirmHandler = null;
+}
 backdrop.addEventListener('click', (e)=>{ if (e.target === backdrop) closeModals(); });
 document.querySelectorAll('.modal-close').forEach(b=>{
   b.addEventListener('click', ()=> closeModals());
@@ -778,12 +782,15 @@ recipeCoverInput.addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   if (!file) return;
   try{
-    const dataUrl = await readImageAsDataUrl(file, 640, 0.72);
-    state.editing.recipeCover = dataUrl;
-    setRecipeCoverPreview(dataUrl);
+    const rawDataUrl = await readFileAsRawDataUrl(file);
+    await openCropper(rawDataUrl, 16/9, 640, 0.72, (croppedDataUrl)=>{
+      state.editing.recipeCover = croppedDataUrl;
+      setRecipeCoverPreview(croppedDataUrl);
+    });
   } catch(err){
     toast("Couldn't read that image");
   }
+  recipeCoverInput.value = '';
 });
 document.getElementById('recipe-cover-remove').addEventListener('click', ()=>{
   state.editing.recipeCover = null;
@@ -843,15 +850,19 @@ function addRecipeStepRow(step=''){
 
   const thumb = row.querySelector('.rs-photo-thumb');
   const removeBtn = row.querySelector('.rs-photo-remove');
-  row.querySelector('.rs-photo-input').addEventListener('change', async (e)=>{
+  const stepPhotoInput = row.querySelector('.rs-photo-input');
+  stepPhotoInput.addEventListener('change', async (e)=>{
     const file = e.target.files[0];
     if (!file) return;
     try{
-      const dataUrl = await readImageAsDataUrl(file, 480, 0.65);
-      row._photoData = dataUrl;
-      thumb.src = dataUrl; thumb.classList.remove('hidden');
-      removeBtn.classList.remove('hidden');
+      const rawDataUrl = await readFileAsRawDataUrl(file);
+      await openCropper(rawDataUrl, 1, 480, 0.65, (croppedDataUrl)=>{
+        row._photoData = croppedDataUrl;
+        thumb.src = croppedDataUrl; thumb.classList.remove('hidden');
+        removeBtn.classList.remove('hidden');
+      });
     } catch(err){ toast("Couldn't read that image"); }
+    stepPhotoInput.value = '';
   });
   removeBtn.addEventListener('click', ()=>{
     row._photoData = null;
@@ -1018,12 +1029,15 @@ ingredientPhotoInput.addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   if (!file) return;
   try{
-    const dataUrl = await readImageAsDataUrl(file, 200, 0.75); // ingredient icons stay small
-    state.editing.ingredientPhoto = dataUrl;
-    setIngredientPhotoPreview(dataUrl);
+    const rawDataUrl = await readFileAsRawDataUrl(file);
+    await openCropper(rawDataUrl, 1, 240, 0.8, (croppedDataUrl)=>{
+      state.editing.ingredientPhoto = croppedDataUrl;
+      setIngredientPhotoPreview(croppedDataUrl);
+    });
   } catch(err){
     toast("Couldn't read that image");
   }
+  ingredientPhotoInput.value = '';
 });
 document.getElementById('ingredient-photo-remove').addEventListener('click', ()=>{
   state.editing.ingredientPhoto = null;
@@ -1087,29 +1101,81 @@ function ingredientIconHtml(ing){
   return escapeHtml(ing.emoji || '🛒');
 }
 
-// Reads a File, downsizes it on a canvas, and resolves a compressed JPEG data URL.
-// Keeping images small matters here since they're stored directly in Firestore
-// documents (no separate file storage / billing plan required).
-function readImageAsDataUrl(file, maxDim = 480, quality = 0.7){
+// Reads a File as a raw (uncompressed) data URL — used as the source image for cropping.
+function readFileAsRawDataUrl(file){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        let w = img.width, h = img.height;
-        if (w > maxDim || h > maxDim){
-          if (w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
-          else { w = Math.round(w * maxDim / h); h = maxDim; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => reject(new Error('Could not read that image'));
-      img.src = reader.result;
-    };
+    reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error('Could not read that file'));
     reader.readAsDataURL(file);
   });
 }
+
+// Downsizes a data URL on a canvas and resolves a compressed JPEG data URL. Keeping
+// images small matters here since they're stored directly in Firestore documents
+// (no separate file storage / billing plan required).
+function resizeDataUrl(dataUrl, maxDim = 480, quality = 0.7){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim){
+        if (w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Could not read that image'));
+    img.src = dataUrl;
+  });
+}
+async function readImageAsDataUrl(file, maxDim = 480, quality = 0.7){
+  const raw = await readFileAsRawDataUrl(file);
+  return resizeDataUrl(raw, maxDim, quality);
+}
+
+/* ============================================================
+   CROP / ZOOM (shared modal for ingredient photo, recipe cover, step photos)
+   ============================================================ */
+let cropperInstance = null;
+let cropConfirmHandler = null;
+const cropModalImg = document.getElementById('crop-image');
+
+// Opens the crop UI on a raw data URL; calls onConfirm(dataUrl) with the final
+// cropped + compressed image once the person clicks "Use this photo". Falls back to a
+// plain center-resize with no crop UI if Cropper.js failed to load (e.g. offline).
+async function openCropper(rawDataUrl, aspectRatio, outputMaxDim, quality, onConfirm){
+  if (typeof Cropper === 'undefined'){
+    try{
+      onConfirm(await resizeDataUrl(rawDataUrl, outputMaxDim, quality));
+    } catch(err){ toast("Couldn't process that image"); }
+    return;
+  }
+  cropConfirmHandler = { onConfirm, outputMaxDim, quality };
+  openModal('crop-modal');
+  cropModalImg.onload = () => {
+    if (cropperInstance) cropperInstance.destroy();
+    cropperInstance = new Cropper(cropModalImg, {
+      aspectRatio,
+      viewMode: 1,
+      autoCropArea: 1,
+      background: false,
+      responsive: true,
+      guides: true,
+      dragMode: 'move'
+    });
+  };
+  cropModalImg.src = rawDataUrl;
+}
+
+document.getElementById('crop-confirm-btn').addEventListener('click', ()=>{
+  if (!cropperInstance || !cropConfirmHandler) return;
+  const { onConfirm, outputMaxDim, quality } = cropConfirmHandler;
+  const canvas = cropperInstance.getCroppedCanvas({ width: outputMaxDim, imageSmoothingQuality: 'high' });
+  onConfirm(canvas.toDataURL('image/jpeg', quality));
+  closeModals();
+});
+document.getElementById('crop-cancel-btn').addEventListener('click', closeModals);
