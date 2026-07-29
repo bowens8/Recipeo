@@ -4,7 +4,7 @@ import {
   onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, serverTimestamp
+  collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /* ============================================================
@@ -327,6 +327,7 @@ onAuthStateChanged(auth, (user)=>{
     authScreen.classList.add('hidden');
     appShell.classList.remove('hidden');
     attachListeners();
+    migrateOwnDataToSharedIfNeeded();
   } else {
     state.uid = null;
     appShell.classList.add('hidden');
@@ -342,15 +343,21 @@ function cleanupListeners(){
 /* ============================================================
    FIRESTORE SYNC
    ============================================================ */
+// Per-user data: pantry, week plan, and personal settings live under this account only.
 function col(name){ return collection(db, 'users', state.uid, name); }
+// Shared data: Ingredients and Recipes live in top-level collections visible to and
+// editable by every signed-in user — one communal library everyone plans meals from.
+const SHARED_INGREDIENTS_COLLECTION = 'shared_ingredients';
+const SHARED_RECIPES_COLLECTION = 'shared_recipes';
+function sharedCol(name){ return collection(db, name); }
 
 function attachListeners(){
-  state.unsubs.push(onSnapshot(col('ingredients'), snap => {
+  state.unsubs.push(onSnapshot(sharedCol(SHARED_INGREDIENTS_COLLECTION), snap => {
     state.ingredients = {};
     snap.forEach(d => state.ingredients[d.id] = d.data());
     renderAll();
   }));
-  state.unsubs.push(onSnapshot(col('recipes'), snap => {
+  state.unsubs.push(onSnapshot(sharedCol(SHARED_RECIPES_COLLECTION), snap => {
     state.recipes = {};
     snap.forEach(d => state.recipes[d.id] = d.data());
     renderAll();
@@ -377,6 +384,42 @@ function attachListeners(){
 
 async function saveStoreSettings(){
   await setDoc(doc(db,'users',state.uid,'settings','stores'), state.storeSettings);
+}
+
+// One-time upgrade path: this app used to store Ingredients and Recipes privately per
+// account (users/{uid}/ingredients, users/{uid}/recipes). Now they live in a shared
+// library instead. If this account has old private data but the shared library is
+// still empty, copy it over automatically — using the SAME document ids, so any recipe
+// referencing an ingredientId (or any meal plan entry referencing a recipeId) keeps
+// working without needing to be rewritten. Safe to run more than once: it only ever
+// acts when the shared library is empty, and setDoc with the same id just overwrites
+// rather than duplicating.
+async function migrateOwnDataToSharedIfNeeded(){
+  try{
+    const [sharedIngSnap, sharedRecSnap] = await Promise.all([
+      getDocs(sharedCol(SHARED_INGREDIENTS_COLLECTION)),
+      getDocs(sharedCol(SHARED_RECIPES_COLLECTION))
+    ]);
+    if (!sharedIngSnap.empty || !sharedRecSnap.empty) return; // shared library already has data
+
+    const [oldIngSnap, oldRecSnap] = await Promise.all([
+      getDocs(col('ingredients')),
+      getDocs(col('recipes'))
+    ]);
+    if (oldIngSnap.empty && oldRecSnap.empty) return; // nothing of this account's to move
+
+    const writes = [];
+    oldIngSnap.forEach(d => writes.push(setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, d.id), d.data())));
+    oldRecSnap.forEach(d => writes.push(setDoc(doc(db, SHARED_RECIPES_COLLECTION, d.id), d.data())));
+    await Promise.all(writes);
+
+    const bits = [];
+    if (oldIngSnap.size) bits.push(`${oldIngSnap.size} ingredient${oldIngSnap.size!==1?'s':''}`);
+    if (oldRecSnap.size) bits.push(`${oldRecSnap.size} recipe${oldRecSnap.size!==1?'s':''}`);
+    toast(`Moved ${bits.join(' and ')} to the new shared library`);
+  } catch(err){
+    console.error('Shared-library migration check failed:', err);
+  }
 }
 
 /* ============================================================
@@ -764,13 +807,20 @@ function priceEntryFor(ing, store){
   return { price, packageSize: Number(raw.packageSize) || 0, unit: raw.unit || ing.unit };
 }
 
+// Shared "close enough to not matter" tolerance, used both for display rounding and for
+// package-buying math — e.g. needing 8.01 oz of an 8 oz-packaged item shouldn't force a
+// second whole package just for a rounding-error-scale amount.
+const CLOSE_ENOUGH = 0.05;
+
 // Cost of buying enough of this ingredient at one store to cover neededQtyInIngUnit
 // (expressed in the ingredient's own unit). The store may price this ingredient in a
 // different unit of its own (e.g. per "bulb" while the ingredient's base unit is
 // "clove") — that gets converted first. For packaged items this rounds UP to whole
-// packages. Returns {cost, store, packages, packageSize, priceUnit, boughtQtyInIngUnit}
-// or null if this store can't price it (no price entered, package size missing, or the
-// chosen price unit can't be resolved for this ingredient).
+// packages, forgiving a negligible overage (see CLOSE_ENOUGH) so you don't get pushed
+// into buying an extra package for a fraction of a unit. Returns
+// {cost, store, packages, packageSize, priceUnit, boughtQtyInIngUnit} or null if this
+// store can't price it (no price entered, package size missing, or the chosen price
+// unit can't be resolved for this ingredient).
 function storeCostFor(ing, store, neededQtyInIngUnit){
   const entry = priceEntryFor(ing, store);
   if (!entry) return null;
@@ -779,7 +829,7 @@ function storeCostFor(ing, store, neededQtyInIngUnit){
 
   if (ing.packaged){
     if (!entry.packageSize || entry.packageSize <= 0) return null;
-    const packages = Math.max(1, Math.ceil(qtyInPriceUnit / entry.packageSize));
+    const packages = Math.max(1, Math.ceil((qtyInPriceUnit - CLOSE_ENOUGH) / entry.packageSize));
     const boughtQtyInPriceUnit = packages * entry.packageSize;
     return {
       cost: packages * entry.price, store, packages,
@@ -957,7 +1007,11 @@ function renderShoppingList(){
   }
 }
 function formatQty(n){
-  return (Math.round(n*100)/100).toString();
+  if (!n || n <= 0) return '0';
+  const nearestHalf = Math.round(n * 2) / 2; // nearest 0, 0.5, 1, 1.5, 2, ...
+  const value = Math.abs(n - nearestHalf) < CLOSE_ENOUGH ? nearestHalf : n;
+  const rounded = Math.round(value * 100) / 100; // avoid stray floating-point tails either way
+  return rounded === 0 ? '<1' : rounded.toString();
 }
 
 /* ---- shopping mode ---- */
@@ -1005,6 +1059,24 @@ document.getElementById('finish-shopping-btn').addEventListener('click', async (
 /* ============================================================
    RENDER: RECIPES
    ============================================================ */
+// Checks a recipe's base-serving ingredients against the pantry. Returns an array of
+// {ing, needed, have} for anything short (or entirely missing). Ingredients that can't
+// be compared (deleted ingredient, or a genuine unit-family mismatch) are skipped rather
+// than counted as missing, since we can't honestly say either way.
+function missingIngredientsForRecipe(r){
+  const missing = [];
+  (r.ingredients||[]).forEach(ri => {
+    const ing = state.ingredients[ri.ingredientId];
+    if (!ing) return;
+    const rowUnit = ri.unit || ing.unit;
+    const needed = convertToIngredientUnit(Number(ri.qty)||0, rowUnit, ing);
+    if (needed === null) return;
+    const have = Number(state.pantry[ri.ingredientId]?.qty) || 0;
+    if (have + 1e-9 < needed) missing.push({ ing, needed, have });
+  });
+  return missing;
+}
+
 function renderRecipes(){
   const container = document.getElementById('recipe-list');
   const entries = Object.entries(state.recipes);
@@ -1019,24 +1091,55 @@ function renderRecipes(){
     }).join('');
     const cal = Math.round(recipeCaloriesPerServing(r));
     const cover = r.coverPhoto ? `<img class="rc-cover" src="${r.coverPhoto}" alt="" />` : '';
+    const missing = missingIngredientsForRecipe(r);
+    const cookBtnClass = missing.length ? 'btn-ghost rc-cook-btn insufficient' : 'btn-primary rc-cook-btn';
+    const cookBtnLabel = missing.length ? `⚠️ Missing ${missing.length} item${missing.length>1?'s':''}` : '🍳 Cook this';
     return `<div class="recipe-card" data-id="${id}">
       ${cover}
       <h3>${escapeHtml(r.name)}</h3>
       <div class="rc-servings">makes ${r.baseServings} servings</div>
       <div class="rc-ingredients">${badges}</div>
       <div class="rc-cal">${cal>0? cal+' kcal / serving' : ''}</div>
-      <button type="button" class="btn btn-primary rc-cook-btn" data-id="${id}">🍳 Cook this</button>
+      <button type="button" class="btn ${cookBtnClass}" data-id="${id}">${cookBtnLabel}</button>
     </div>`;
   }).join('');
   container.querySelectorAll('.recipe-card').forEach(card=>{
     card.addEventListener('click', ()=> openRecipeModal(card.dataset.id));
   });
   container.querySelectorAll('.rc-cook-btn').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openCookMode(btn.dataset.id); });
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const recipeId = btn.dataset.id;
+      const missing = missingIngredientsForRecipe(state.recipes[recipeId]);
+      if (missing.length === 0){
+        openCookMode(recipeId);
+      } else {
+        openMissingIngredientsModal(recipeId, missing);
+      }
+    });
   });
 }
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
+
+/* ---- "missing ingredients" confirmation before Cook Mode ---- */
+function openMissingIngredientsModal(recipeId, missing){
+  state.editing.pendingCookRecipeId = recipeId;
+  document.getElementById('cook-confirm-recipe-name').textContent = state.recipes[recipeId]?.name || '';
+  document.getElementById('cook-confirm-missing-list').innerHTML = missing.map(m => `
+    <div class="missing-item">
+      <span class="s-emoji">${ingredientIconHtml(m.ing)}</span>
+      <span class="missing-name">${escapeHtml(m.ing.name)}</span>
+      <span class="missing-amounts">need ${formatQty(m.needed)} ${UNIT_LABEL[m.ing.unit]||m.ing.unit} · have ${formatQty(m.have)}</span>
+    </div>`).join('');
+  openModal('cook-confirm-modal');
+}
+document.getElementById('cook-confirm-cancel-btn').addEventListener('click', closeModals);
+document.getElementById('cook-confirm-anyway-btn').addEventListener('click', ()=>{
+  const recipeId = state.editing.pendingCookRecipeId;
+  closeModals();
+  if (recipeId) openCookMode(recipeId);
+});
 
 /* ============================================================
    COOK MODE — full-screen: gather ingredients + scroll through steps
@@ -1307,9 +1410,9 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
   const data = { name, baseServings, ingredients, steps, coverPhoto: state.editing.recipeCover || null };
 
   if (state.editing.recipeId){
-    await setDoc(doc(db,'users',state.uid,'recipes', state.editing.recipeId), data);
+    await setDoc(doc(db, SHARED_RECIPES_COLLECTION, state.editing.recipeId), data);
   } else {
-    await addDoc(col('recipes'), data);
+    await addDoc(sharedCol(SHARED_RECIPES_COLLECTION), data);
   }
   closeModals();
   toast('Recipe saved');
@@ -1317,8 +1420,8 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
 
 document.getElementById('delete-recipe-btn').addEventListener('click', async ()=>{
   if (!state.editing.recipeId) return;
-  if (!confirm('Delete this recipe? This cannot be undone.')) return;
-  await deleteDoc(doc(db,'users',state.uid,'recipes', state.editing.recipeId));
+  if (!confirm('Delete this recipe? It\'s shared, so this removes it for everyone using this planner. This cannot be undone.')) return;
+  await deleteDoc(doc(db, SHARED_RECIPES_COLLECTION, state.editing.recipeId));
   closeModals();
   toast('Recipe deleted');
 });
@@ -1412,7 +1515,7 @@ document.getElementById('bulk-add-confirm-btn').addEventListener('click', async 
       packaged: false,
       prices: {}
     };
-    await addDoc(col('ingredients'), data);
+    await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
     added++;
     if (match) autofilled++;
   }
@@ -1688,9 +1791,9 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     prices
   };
   if (state.editing.ingredientId){
-    await setDoc(doc(db,'users',state.uid,'ingredients', state.editing.ingredientId), data);
+    await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, state.editing.ingredientId), data);
   } else {
-    await addDoc(col('ingredients'), data);
+    await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
   }
   closeModals();
   toast('Ingredient saved');
@@ -1698,8 +1801,8 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
 
 document.getElementById('delete-ingredient-btn').addEventListener('click', async ()=>{
   if (!state.editing.ingredientId) return;
-  if (!confirm('Delete this ingredient? Recipes using it will show a missing ingredient.')) return;
-  await deleteDoc(doc(db,'users',state.uid,'ingredients', state.editing.ingredientId));
+  if (!confirm('Delete this ingredient? It\'s shared, so this removes it for everyone using this planner, and any recipe using it will show a missing ingredient.')) return;
+  await deleteDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, state.editing.ingredientId));
   closeModals();
   toast('Ingredient deleted');
 });
