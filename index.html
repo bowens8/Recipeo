@@ -208,8 +208,11 @@
       </div>
       <p class="hint">Enter calories for exactly one unit as selected above (e.g. calories per 1 gram, or per 1 each). The unit is just a reference for calories — on the shopping list, amounts are automatically totaled and shown in whichever size (g/kg, tsp/tbsp/cup/L, etc.) makes the most sense, so you never need to do the math yourself.</p>
 
-      <h4>Custom sub-units <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional)</span></h4>
-      <p class="hint" style="margin-top:-4px;">If recipes sometimes measure this ingredient in a smaller unit than the one above — like cloves instead of bulbs — add it here. Recipes can then use that unit directly, and the shopping list will convert, combine, and round up to whole units automatically.</p>
+      <h4>Custom units <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional)</span></h4>
+      <p class="hint" style="margin-top:-4px;">Add other units recipes might use for this ingredient — smaller ones (10 cloves = 1 bulb)
+        or larger ones (1 bulb = 10 cloves), whichever direction makes sense. Recipes can then use any of these units
+        directly, and the shopping list converts and combines everything automatically. Any unit marked "larger"
+        also becomes selectable as the pricing unit below (e.g. price per bulb instead of per clove).</p>
       <div id="ingredient-custom-units" class="custom-units-list"></div>
       <button type="button" id="add-custom-unit-btn" class="btn btn-ghost btn-small">+ Add custom unit</button>
 
@@ -229,9 +232,11 @@
       </label>
       <p class="hint" style="margin-top:-6px;">Check this for things like a box of pasta or a block of cheese.
         Leave it unchecked for things sold as exactly what you need, like deli meat sliced to order. When
-        checked, enter each store's package size below (in this ingredient's unit above) — the shopping list
-        will round up to the number of whole packages you'd actually need to buy, and any extra left over
-        from rounding up gets automatically added to your pantry once you check it off while shopping.</p>
+        checked, enter each store's package size below — the shopping list will round up to the number of
+        whole packages you'd actually need to buy, and any extra left over from rounding up gets automatically
+        added to your pantry once you check it off while shopping. If you've defined a "larger" custom unit
+        above (like bulb), each store also gets a unit dropdown so you can price and size packages in that
+        unit directly instead of converting by hand.</p>
 
       <div id="ingredient-prices" class="ingredient-prices"></div>
       <p class="hint">Leave a store blank if you don't know the price there — the shopping list will just skip it for that item.</p>
