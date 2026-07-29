@@ -413,7 +413,7 @@ input[type="file"]{
 .cook-servings-label{font-size:.78rem; color:var(--ink-soft); font-family:var(--font-mono); min-width:34px; text-align:right;}
 .cook-body{max-width:1080px; width:100%; margin:0 auto; padding:22px 20px 60px; display:flex; flex-direction:column; gap:30px;}
 .cook-section h3{font-size:1.05rem; margin-bottom:12px;}
-.cook-ingredient-list{display:flex; flex-direction:column; gap:8px; max-width:640px;}
+.cook-ingredient-list{display:flex; flex-direction:column; gap:8px;}
 .cook-ing-item{
   display:flex; align-items:center; gap:12px; background:var(--paper);
   border:1.5px solid var(--paper-line); border-radius:11px; padding:12px 14px; cursor:pointer;
