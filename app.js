@@ -24,6 +24,141 @@ const state = {
 
 const UNIT_LABEL = { g:"g", kg:"kg", ml:"ml", l:"L", cup:"cup", tbsp:"tbsp", tsp:"tsp", each:"each", oz:"oz", lb:"lb" };
 const STORES = ["Aldi", "Kroger", "Giant Eagle"];
+const MEAL_TYPE_ICON = { breakfast:'🍳', lunch:'🥪', dinner:'🍽️', snack:'🍿' };
+const MEAL_TYPE_LABEL = { breakfast:'Breakfast', lunch:'Lunch', dinner:'Dinner', snack:'Snack' };
+
+// Built-in starting-point data for common ingredients: emoji, a sensible default unit,
+// and calories PER THAT UNIT (matching the app's own convention — e.g. per 1 gram, not
+// per 100g). Entirely local — no external API, no key, no network required — so
+// autofill and bulk-add both work offline. Values are reasonable averages meant as a
+// starting point; people can always edit any field after autofilling.
+const COMMON_INGREDIENTS = {
+  // proteins
+  "chicken breast": { emoji:"🍗", unit:"g", calories:1.65 },
+  "chicken thigh": { emoji:"🍗", unit:"g", calories:2.09 },
+  "ground beef": { emoji:"🥩", unit:"g", calories:2.54 },
+  "steak": { emoji:"🥩", unit:"g", calories:2.71 },
+  "bacon": { emoji:"🥓", unit:"g", calories:5.41 },
+  "salmon": { emoji:"🐟", unit:"g", calories:2.08 },
+  "shrimp": { emoji:"🍤", unit:"g", calories:0.99 },
+  "tuna": { emoji:"🐟", unit:"g", calories:1.32 },
+  "egg": { emoji:"🥚", unit:"each", calories:72 },
+  "tofu": { emoji:"🍱", unit:"g", calories:0.76 },
+  "sausage": { emoji:"🌭", unit:"g", calories:3.01 },
+  "ham": { emoji:"🍖", unit:"g", calories:1.45 },
+  "turkey": { emoji:"🦃", unit:"g", calories:1.89 },
+  "pork chop": { emoji:"🥩", unit:"g", calories:2.31 },
+  // dairy
+  "milk": { emoji:"🥛", unit:"cup", calories:149 },
+  "whole milk": { emoji:"🥛", unit:"cup", calories:149 },
+  "butter": { emoji:"🧈", unit:"tbsp", calories:102 },
+  "cheddar cheese": { emoji:"🧀", unit:"g", calories:4.03 },
+  "mozzarella": { emoji:"🧀", unit:"g", calories:2.80 },
+  "parmesan": { emoji:"🧀", unit:"g", calories:4.31 },
+  "cream cheese": { emoji:"🧀", unit:"oz", calories:99 },
+  "yogurt": { emoji:"🥣", unit:"cup", calories:149 },
+  "greek yogurt": { emoji:"🥣", unit:"cup", calories:100 },
+  "sour cream": { emoji:"🥄", unit:"tbsp", calories:23 },
+  "heavy cream": { emoji:"🥛", unit:"tbsp", calories:52 },
+  "half and half": { emoji:"🥛", unit:"tbsp", calories:20 },
+  // produce
+  "onion": { emoji:"🧅", unit:"each", calories:44 },
+  "garlic": { emoji:"🧄", unit:"each", calories:4 },
+  "tomato": { emoji:"🍅", unit:"each", calories:22 },
+  "potato": { emoji:"🥔", unit:"each", calories:163 },
+  "sweet potato": { emoji:"🍠", unit:"each", calories:112 },
+  "carrot": { emoji:"🥕", unit:"each", calories:25 },
+  "bell pepper": { emoji:"🫑", unit:"each", calories:24 },
+  "broccoli": { emoji:"🥦", unit:"g", calories:0.34 },
+  "spinach": { emoji:"🥬", unit:"g", calories:0.23 },
+  "lettuce": { emoji:"🥬", unit:"g", calories:0.15 },
+  "cucumber": { emoji:"🥒", unit:"each", calories:45 },
+  "avocado": { emoji:"🥑", unit:"each", calories:240 },
+  "lemon": { emoji:"🍋", unit:"each", calories:17 },
+  "lime": { emoji:"🍋", unit:"each", calories:20 },
+  "banana": { emoji:"🍌", unit:"each", calories:105 },
+  "apple": { emoji:"🍎", unit:"each", calories:95 },
+  "orange": { emoji:"🍊", unit:"each", calories:62 },
+  "mushroom": { emoji:"🍄", unit:"g", calories:0.22 },
+  "corn": { emoji:"🌽", unit:"each", calories:88 },
+  "celery": { emoji:"🥬", unit:"each", calories:6 },
+  "zucchini": { emoji:"🥒", unit:"each", calories:33 },
+  "cauliflower": { emoji:"🥦", unit:"g", calories:0.25 },
+  "green onion": { emoji:"🧅", unit:"each", calories:5 },
+  "jalapeno": { emoji:"🌶️", unit:"each", calories:4 },
+  "cilantro": { emoji:"🌿", unit:"g", calories:0.23 },
+  "parsley": { emoji:"🌿", unit:"g", calories:0.36 },
+  "ginger": { emoji:"🫚", unit:"g", calories:0.80 },
+  // grains / pantry
+  "rice": { emoji:"🍚", unit:"g", calories:3.65 },
+  "pasta": { emoji:"🍝", unit:"g", calories:3.71 },
+  "flour": { emoji:"🌾", unit:"g", calories:3.64 },
+  "all purpose flour": { emoji:"🌾", unit:"g", calories:3.64 },
+  "sugar": { emoji:"🍬", unit:"g", calories:3.87 },
+  "brown sugar": { emoji:"🍬", unit:"g", calories:3.80 },
+  "bread": { emoji:"🍞", unit:"each", calories:75 },
+  "oats": { emoji:"🌾", unit:"g", calories:3.89 },
+  "cereal": { emoji:"🥣", unit:"g", calories:3.79 },
+  "tortilla": { emoji:"🫓", unit:"each", calories:140 },
+  "quinoa": { emoji:"🍚", unit:"g", calories:3.68 },
+  "breadcrumbs": { emoji:"🍞", unit:"g", calories:3.95 },
+  "baking powder": { emoji:"🧁", unit:"tsp", calories:2 },
+  "baking soda": { emoji:"🧁", unit:"tsp", calories:0 },
+  // oils / condiments
+  "olive oil": { emoji:"🫒", unit:"tbsp", calories:119 },
+  "vegetable oil": { emoji:"🛢️", unit:"tbsp", calories:124 },
+  "mayonnaise": { emoji:"🥪", unit:"tbsp", calories:94 },
+  "ketchup": { emoji:"🍅", unit:"tbsp", calories:15 },
+  "mustard": { emoji:"🌭", unit:"tbsp", calories:9 },
+  "soy sauce": { emoji:"🍶", unit:"tbsp", calories:8 },
+  "honey": { emoji:"🍯", unit:"tbsp", calories:64 },
+  "maple syrup": { emoji:"🍁", unit:"tbsp", calories:52 },
+  "vinegar": { emoji:"🍶", unit:"tbsp", calories:3 },
+  "hot sauce": { emoji:"🌶️", unit:"tsp", calories:1 },
+  "salsa": { emoji:"🍅", unit:"tbsp", calories:4 },
+  "peanut butter": { emoji:"🥜", unit:"tbsp", calories:94 },
+  "jam": { emoji:"🍓", unit:"tbsp", calories:56 },
+  // spices
+  "salt": { emoji:"🧂", unit:"tsp", calories:0 },
+  "black pepper": { emoji:"🧂", unit:"tsp", calories:6 },
+  "garlic powder": { emoji:"🧄", unit:"tsp", calories:10 },
+  "onion powder": { emoji:"🧅", unit:"tsp", calories:8 },
+  "paprika": { emoji:"🌶️", unit:"tsp", calories:6 },
+  "cumin": { emoji:"🌿", unit:"tsp", calories:8 },
+  "cinnamon": { emoji:"🌿", unit:"tsp", calories:6 },
+  "oregano": { emoji:"🌿", unit:"tsp", calories:3 },
+  "basil": { emoji:"🌿", unit:"tsp", calories:1 },
+  "thyme": { emoji:"🌿", unit:"tsp", calories:1 },
+  "chili powder": { emoji:"🌶️", unit:"tsp", calories:8 },
+  "red pepper flakes": { emoji:"🌶️", unit:"tsp", calories:6 },
+  "cayenne": { emoji:"🌶️", unit:"tsp", calories:6 },
+  // beverages
+  "coffee": { emoji:"☕", unit:"cup", calories:2 },
+  "orange juice": { emoji:"🍊", unit:"cup", calories:112 },
+  "apple juice": { emoji:"🍎", unit:"cup", calories:114 },
+  "beer": { emoji:"🍺", unit:"each", calories:153 },
+  "wine": { emoji:"🍷", unit:"cup", calories:200 },
+  // nuts / misc
+  "almonds": { emoji:"🌰", unit:"g", calories:5.79 },
+  "walnuts": { emoji:"🌰", unit:"g", calories:6.54 },
+  "peanuts": { emoji:"🥜", unit:"g", calories:5.67 },
+  "chocolate chips": { emoji:"🍫", unit:"g", calories:4.86 },
+  "raisins": { emoji:"🍇", unit:"g", calories:3.0 },
+  "black beans": { emoji:"🫘", unit:"g", calories:1.32 },
+  "chickpeas": { emoji:"🫘", unit:"g", calories:1.64 },
+  "lentils": { emoji:"🫘", unit:"g", calories:1.16 },
+};
+// Look up a common ingredient by name — trims/lowercases and also tries a simple
+// singular/plural fold (e.g. "eggs" -> "egg", "tomatoes" -> "tomato") so close-enough
+// typing still matches.
+function lookupCommonIngredient(name){
+  const key = (name||'').trim().toLowerCase();
+  if (!key) return null;
+  if (COMMON_INGREDIENTS[key]) return COMMON_INGREDIENTS[key];
+  const singular = key.endsWith('oes') ? key.slice(0,-2) : key.endsWith('s') ? key.slice(0,-1) : null;
+  if (singular && COMMON_INGREDIENTS[singular]) return COMMON_INGREDIENTS[singular];
+  return null;
+}
 state.storeSettings = STORES.reduce((o,s)=> (o[s]=true, o), {}); // which stores are "in play"
 
 /* ---- unit conversion ---- */
@@ -372,10 +507,17 @@ function renderWeekPlan(){
     const meals = mealsForDate(dateStr);
     let dayCal = 0;
     meals.forEach(m => {
+      if (m.type === 'quick'){
+        const ing = state.ingredients[m.ingredientId];
+        if (!ing) return;
+        const qtyInIngUnit = convertToIngredientUnit(Number(m.qty)||0, m.unit || ing.unit, ing);
+        dayCal += (Number(ing.calories)||0) * qtyInIngUnit;
+        return;
+      }
       const recipe = state.recipes[m.recipeId];
       if (!recipe) return;
       const perServing = recipeCaloriesPerServing(recipe);
-      const eaten = m.type === 'cook' ? Number(m.eatenServings)||0 : Number(m.eatenServings)||0;
+      const eaten = Number(m.eatenServings)||0;
       dayCal += perServing * eaten;
     });
     weekTotalCal += dayCal;
@@ -388,20 +530,33 @@ function renderWeekPlan(){
     dayCol.appendChild(head);
 
     meals.forEach(m => {
-      const recipe = state.recipes[m.recipeId];
       const chip = document.createElement('div');
       chip.className = 'meal-chip' + (m.type==='leftover' ? ' leftover' : '');
-      const name = recipe ? recipe.name : '(deleted recipe)';
-      const metaBits = [];
-      if (m.type==='cook'){
-        metaBits.push(`cooked ${m.batchServings} · eating ${m.eatenServings}`);
-        const remain = remainingLeftoverServings(m.id);
-        if (remain > 0) metaBits.push(`${remain} left over`);
+      const typeIcon = MEAL_TYPE_ICON[m.mealType] || '';
+
+      let titleHtml, metaText;
+      if (m.type === 'quick'){
+        const ing = state.ingredients[m.ingredientId];
+        const qtyInIngUnit = ing ? convertToIngredientUnit(Number(m.qty)||0, m.unit||ing.unit, ing) : 0;
+        titleHtml = `${typeIcon} <span class="chip-ing-icon">${ing ? ingredientIconHtml(ing) : ''}</span> ${escapeHtml(ing ? ing.name : '(deleted ingredient)')}`;
+        metaText = ing ? `${formatQty(Number(m.qty)||0)} ${UNIT_LABEL[m.unit]||m.unit}` : '';
       } else {
-        metaBits.push(`leftovers · eating ${m.eatenServings}`);
+        const recipe = state.recipes[m.recipeId];
+        const name = recipe ? recipe.name : '(deleted recipe)';
+        titleHtml = `${typeIcon} ${m.type==='leftover'?'♻️ ':''}${escapeHtml(name)}`;
+        const metaBits = [];
+        if (m.type==='cook'){
+          metaBits.push(`cooked ${m.batchServings} · eating ${m.eatenServings}`);
+          const remain = remainingLeftoverServings(m.id);
+          if (remain > 0) metaBits.push(`${remain} left over`);
+        } else {
+          metaBits.push(`leftovers · eating ${m.eatenServings}`);
+        }
+        metaText = metaBits.join(' · ');
       }
-      chip.innerHTML = `<div class="chip-title">${m.type==='leftover'?'♻️':'🍳'} ${escapeHtml(name)}</div>
-        <div class="chip-meta">${metaBits.join(' · ')}</div>`;
+
+      chip.innerHTML = `<div class="chip-title">${titleHtml}</div>
+        <div class="chip-meta">${metaText}</div>`;
       chip.addEventListener('click', ()=> openMealModal(dateStr, m.id));
       dayCol.appendChild(chip);
     });
@@ -426,17 +581,40 @@ const mealLeftoverSelect = document.getElementById('meal-leftover-select');
 const batchServingsInput = document.getElementById('meal-batch-servings');
 const eatenServingsInput = document.getElementById('meal-eaten-servings');
 const leftoverServingsInput = document.getElementById('meal-leftover-servings');
+const mealTypeSelect = document.getElementById('meal-type-select');
+const mealQuickIngredientSelect = document.getElementById('meal-quick-ingredient');
+const mealQuickQtyInput = document.getElementById('meal-quick-qty');
+const mealQuickUnitSelect = document.getElementById('meal-quick-unit');
+mountIngredientCombo(document.getElementById('meal-quick-ingredient-combo'), '#meal-quick-ingredient');
+
+// Re-syncs a combo's visible search text after its hidden input's .value is set
+// programmatically (e.g. when opening the meal modal to edit an existing entry).
+function syncComboDisplay(hiddenInput){
+  const root = hiddenInput.closest('.ing-combo');
+  if (!root) return;
+  const searchInput = root.querySelector('.ing-combo-search');
+  const ing = state.ingredients[hiddenInput.value];
+  searchInput.value = ing ? ing.name : '';
+}
 
 document.getElementById('toggle-cook').addEventListener('click', ()=> setMealType('cook'));
 document.getElementById('toggle-leftover').addEventListener('click', ()=> setMealType('leftover'));
+document.getElementById('toggle-quick').addEventListener('click', ()=> setMealType('quick'));
 
 function setMealType(type){
   document.getElementById('toggle-cook').classList.toggle('active', type==='cook');
   document.getElementById('toggle-leftover').classList.toggle('active', type==='leftover');
+  document.getElementById('toggle-quick').classList.toggle('active', type==='quick');
   document.getElementById('meal-cook-fields').classList.toggle('hidden', type!=='cook');
   document.getElementById('meal-leftover-fields').classList.toggle('hidden', type!=='leftover');
+  document.getElementById('meal-quick-fields').classList.toggle('hidden', type!=='quick');
   state.editing.mealType = type;
 }
+
+mealQuickIngredientSelect.addEventListener('change', (e)=>{
+  const ing = state.ingredients[e.target.value];
+  mealQuickUnitSelect.innerHTML = unitOptionsHtml(ing ? ing.unit : 'g', ing);
+});
 
 function openMealModal(dateStr, mealId){
   state.editing.mealDate = dateStr;
@@ -462,22 +640,35 @@ function openMealModal(dateStr, mealId){
   if (mealId){
     const m = state.mealPlan[mealId];
     document.getElementById('meal-modal-title').textContent = 'Edit meal';
+    mealTypeSelect.value = m.mealType || 'dinner';
     setMealType(m.type);
     if (m.type === 'cook'){
       mealRecipeSelect.value = m.recipeId;
       batchServingsInput.value = m.batchServings;
       eatenServingsInput.value = m.eatenServings;
-    } else {
+    } else if (m.type === 'leftover'){
       mealLeftoverSelect.value = m.sourceMealId;
       leftoverServingsInput.value = m.eatenServings;
+    } else { // quick
+      const ing = state.ingredients[m.ingredientId];
+      mealQuickUnitSelect.innerHTML = unitOptionsHtml(m.unit || (ing?ing.unit:'g'), ing);
+      mealQuickIngredientSelect.value = m.ingredientId;
+      syncComboDisplay(mealQuickIngredientSelect);
+      mealQuickQtyInput.value = m.qty;
+      mealQuickUnitSelect.value = m.unit;
     }
     deleteBtn.classList.remove('hidden');
   } else {
     document.getElementById('meal-modal-title').textContent = 'Add meal';
+    mealTypeSelect.value = 'dinner';
     setMealType('cook');
     batchServingsInput.value = 4;
     eatenServingsInput.value = 4;
     leftoverServingsInput.value = 1;
+    mealQuickQtyInput.value = 1;
+    mealQuickIngredientSelect.value = '';
+    syncComboDisplay(mealQuickIngredientSelect);
+    mealQuickUnitSelect.innerHTML = unitOptionsHtml('g', null);
     deleteBtn.classList.add('hidden');
   }
   openModal('meal-modal');
@@ -485,26 +676,42 @@ function openMealModal(dateStr, mealId){
 
 document.getElementById('save-meal-btn').addEventListener('click', async ()=>{
   const type = state.editing.mealType;
+  const mealType = mealTypeSelect.value || 'dinner';
   let data;
   if (type === 'cook'){
     if (!mealRecipeSelect.value){ toast('Add a recipe first'); return; }
     data = {
       date: state.editing.mealDate,
       type: 'cook',
+      mealType,
       recipeId: mealRecipeSelect.value,
       batchServings: Number(batchServingsInput.value)||0,
       eatenServings: Number(eatenServingsInput.value)||0,
       createdAt: serverTimestamp()
     };
-  } else {
+  } else if (type === 'leftover'){
     if (!mealLeftoverSelect.value){ toast('No leftovers available'); return; }
     const source = state.mealPlan[mealLeftoverSelect.value];
     data = {
       date: state.editing.mealDate,
       type: 'leftover',
+      mealType,
       recipeId: source.recipeId,
       sourceMealId: mealLeftoverSelect.value,
       eatenServings: Number(leftoverServingsInput.value)||0,
+      createdAt: serverTimestamp()
+    };
+  } else { // quick
+    if (!mealQuickIngredientSelect.value){ toast('Add an ingredient first'); return; }
+    const qty = Number(mealQuickQtyInput.value)||0;
+    if (qty <= 0){ toast('Enter an amount'); return; }
+    data = {
+      date: state.editing.mealDate,
+      type: 'quick',
+      mealType,
+      ingredientId: mealQuickIngredientSelect.value,
+      qty,
+      unit: mealQuickUnitSelect.value,
       createdAt: serverTimestamp()
     };
   }
@@ -607,8 +814,25 @@ function renderShoppingList(){
   const unconverted = {};  // "ingredientId__unit" -> {ingredientId, unit, qty} — genuinely different unit family
 
   Object.values(state.mealPlan).forEach(m => {
-    if (m.type !== 'cook') return;
     if (!dates.includes(m.date)) return;
+
+    if (m.type === 'quick'){
+      const ing = state.ingredients[m.ingredientId];
+      if (!ing) return;
+      const rowUnit = m.unit || ing.unit;
+      const rawQty = Number(m.qty)||0;
+      const converted = convertToIngredientUnit(rawQty, rowUnit, ing);
+      if (converted !== null){
+        neededBase[m.ingredientId] = (neededBase[m.ingredientId]||0) + toBaseUnit(converted, ing.unit);
+      } else {
+        const key = m.ingredientId + '__' + rowUnit;
+        if (!unconverted[key]) unconverted[key] = { ingredientId: m.ingredientId, unit: rowUnit, qty: 0 };
+        unconverted[key].qty += rawQty;
+      }
+      return;
+    }
+
+    if (m.type !== 'cook') return;
     const recipe = state.recipes[m.recipeId];
     if (!recipe || !recipe.baseServings) return;
     const scale = (Number(m.batchServings)||0) / recipe.baseServings;
@@ -667,10 +891,13 @@ function renderShoppingList(){
       if (best.packages !== null){
         // packaged item: show the whole-package purchase, not the raw fractional need,
         // sized in whatever unit that store's price was entered in (base or a custom
-        // "larger" unit, e.g. bulb)
+        // "larger" unit, e.g. bulb) — but also call out the actual amount needed in the
+        // ingredient's own unit, since "buy 3 packages" alone hides how much you'll use.
         const pkgWord = best.packages === 1 ? 'package' : 'packages';
         const pkgUnitLabel = UNIT_LABEL[best.priceUnit] || best.priceUnit;
-        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each)`;
+        const { unit: neededDispUnit, qty: neededDispQty } = pickDisplayUnit(baseQty, category, ing.unit);
+        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each)
+          <span class="s-needed-note">need ${formatQty(neededDispQty)} ${UNIT_LABEL[neededDispUnit]||neededDispUnit}</span>`;
         pantryQty = best.boughtQtyInIngUnit; // credit the full purchased amount, incl. rounding leftover
       } else {
         const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
@@ -798,14 +1025,64 @@ function renderRecipes(){
       <div class="rc-servings">makes ${r.baseServings} servings</div>
       <div class="rc-ingredients">${badges}</div>
       <div class="rc-cal">${cal>0? cal+' kcal / serving' : ''}</div>
+      <button type="button" class="btn btn-primary rc-cook-btn" data-id="${id}">🍳 Cook this</button>
     </div>`;
   }).join('');
   container.querySelectorAll('.recipe-card').forEach(card=>{
     card.addEventListener('click', ()=> openRecipeModal(card.dataset.id));
   });
+  container.querySelectorAll('.rc-cook-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openCookMode(btn.dataset.id); });
+  });
 }
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
+
+/* ============================================================
+   COOK MODE — full-screen: gather ingredients + scroll through steps
+   ============================================================ */
+function openCookMode(recipeId){
+  const r = state.recipes[recipeId];
+  if (!r) return;
+
+  document.getElementById('cook-recipe-title').textContent = r.name;
+  document.getElementById('cook-servings-label').textContent = `makes ${r.baseServings}`;
+
+  const ingList = document.getElementById('cook-ingredient-list');
+  const rowsHtml = (r.ingredients||[]).map(ri => {
+    const ing = state.ingredients[ri.ingredientId];
+    if (!ing) return '';
+    const unit = ri.unit || ing.unit;
+    return `<label class="cook-ing-item">
+      <input type="checkbox" />
+      <span class="s-emoji">${ingredientIconHtml(ing)}</span>
+      <span class="cook-ing-name">${escapeHtml(ing.name)}</span>
+      <span class="cook-ing-qty">${formatQty(Number(ri.qty)||0)} ${UNIT_LABEL[unit]||unit}</span>
+    </label>`;
+  }).join('');
+  ingList.innerHTML = rowsHtml || '<p class="shop-empty">No ingredients listed for this recipe.</p>';
+  ingList.querySelectorAll('.cook-ing-item').forEach(item=>{
+    item.querySelector('input').addEventListener('change', (e)=> item.classList.toggle('checked', e.target.checked));
+  });
+
+  const stepsList = document.getElementById('cook-steps-list');
+  const steps = r.steps || [];
+  stepsList.innerHTML = steps.length ? steps.map((s, i) => {
+    const text = typeof s === 'string' ? s : (s.text || '');
+    const photo = (s && typeof s === 'object') ? s.photo : null;
+    return `<div class="cook-step-card">
+      <div class="cook-step-num">Step ${i+1} of ${steps.length}</div>
+      ${photo ? `<img class="cook-step-photo" src="${photo}" alt="" />` : ''}
+      <p class="cook-step-text">${escapeHtml(text)}</p>
+    </div>`;
+  }).join('') : '<p class="shop-empty">No steps added for this recipe yet.</p>';
+
+  document.getElementById('cook-overlay').classList.remove('hidden');
+  document.getElementById('cook-overlay').scrollTop = 0;
+}
+document.getElementById('cook-close-btn').addEventListener('click', ()=>{
+  document.getElementById('cook-overlay').classList.add('hidden');
+});
 
 /* ============================================================
    RECIPE MODAL
@@ -854,7 +1131,7 @@ recipeCoverInput.addEventListener('change', async (e)=>{
   if (!file) return;
   try{
     const rawDataUrl = await readFileAsRawDataUrl(file);
-    await openCropper(rawDataUrl, 16/9, 640, 0.72, (croppedDataUrl)=>{
+    await openCropper(rawDataUrl, NaN, 800, 0.75, (croppedDataUrl)=>{
       state.editing.recipeCover = croppedDataUrl;
       setRecipeCoverPreview(croppedDataUrl);
     });
@@ -869,12 +1146,58 @@ document.getElementById('recipe-cover-remove').addEventListener('click', ()=>{
   setRecipeCoverPreview(null);
 });
 
-function ingredientOptionsHtml(selectedId){
-  const ids = Object.keys(state.ingredients);
-  if (ids.length===0) return `<option value="">Add ingredients first (Ingredients tab)</option>`;
-  return `<option value="">Select ingredient…</option>` + ids.map(id =>
-    `<option value="${id}" ${id===selectedId?'selected':''}>${state.ingredients[id].emoji} ${escapeHtml(state.ingredients[id].name)}</option>`
-  ).join('');
+// Reusable "type to search" ingredient picker. Give it a hidden <input> (matching
+// hiddenSelector) that holds the actual selected ingredientId — existing code that
+// reads/listens on that hidden input keeps working unchanged, since we still set its
+// .value and dispatch a real 'change' event on it.
+function ingredientComboLabel(ing){
+  return ing ? `${ing.emoji || '🥕'} ${ing.name}` : '';
+}
+function ingredientComboHtml(hiddenAttrs){
+  return `<div class="ing-combo">
+    <input type="text" class="ing-combo-search" placeholder="Search ingredients…" autocomplete="off" />
+    <input type="hidden" ${hiddenAttrs} />
+    <div class="ing-combo-list hidden"></div>
+  </div>`;
+}
+function mountIngredientCombo(root, hiddenSelector){
+  const searchInput = root.querySelector('.ing-combo-search');
+  const hiddenInput = root.querySelector(hiddenSelector);
+  const listEl = root.querySelector('.ing-combo-list');
+
+  function renderList(filterText){
+    const q = (filterText||'').trim().toLowerCase();
+    const ids = Object.keys(state.ingredients).filter(id => !q || state.ingredients[id].name.toLowerCase().includes(q));
+    listEl.innerHTML = ids.length
+      ? ids.slice(0,50).map(id => `<div class="ing-combo-item" data-id="${id}">${ingredientComboLabel(state.ingredients[id])}</div>`).join('')
+      : `<div class="ing-combo-empty">No matches — add it on the Ingredients tab first</div>`;
+    listEl.classList.remove('hidden');
+  }
+  function selectIngredient(id){
+    hiddenInput.value = id;
+    searchInput.value = state.ingredients[id] ? state.ingredients[id].name : '';
+    listEl.classList.add('hidden');
+    hiddenInput.dispatchEvent(new Event('change', { bubbles:true }));
+  }
+
+  searchInput.addEventListener('focus', ()=> renderList(''));
+  searchInput.addEventListener('input', ()=>{ hiddenInput.value=''; renderList(searchInput.value); });
+  listEl.addEventListener('mousedown', (e)=>{ // mousedown fires before the input's blur
+    const item = e.target.closest('.ing-combo-item');
+    if (item) selectIngredient(item.dataset.id);
+  });
+  searchInput.addEventListener('blur', ()=>{
+    setTimeout(()=>{
+      listEl.classList.add('hidden');
+      // revert the visible text to match whatever's actually selected, in case they
+      // typed to search but clicked away without picking anything
+      const ing = state.ingredients[hiddenInput.value];
+      searchInput.value = ing ? ing.name : '';
+    }, 150);
+  });
+
+  const preselected = state.ingredients[hiddenInput.value];
+  if (preselected) searchInput.value = preselected.name;
 }
 
 function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:''}){
@@ -883,10 +1206,11 @@ function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:''}){
   const initialIng = ri.ingredientId ? state.ingredients[ri.ingredientId] : null;
   const initialUnit = ri.unit || (initialIng ? initialIng.unit : 'g');
   row.innerHTML = `
-    <select class="ri-ingredient">${ingredientOptionsHtml(ri.ingredientId)}</select>
+    ${ingredientComboHtml(`class="ri-ingredient" value="${ri.ingredientId||''}"`)}
     <input type="number" class="ri-qty" placeholder="qty" step="any" min="0" value="${ri.qty ?? ''}" />
     <select class="ri-unit">${unitOptionsHtml(initialUnit, initialIng)}</select>
     <button type="button" class="ri-remove">✕</button>`;
+  mountIngredientCombo(row.querySelector('.ing-combo'), '.ri-ingredient');
   row.querySelector('.ri-ingredient').addEventListener('change', (e)=>{
     const ing = state.ingredients[e.target.value];
     // rebuild the unit list for the newly-chosen ingredient (it may have its own custom units)
@@ -940,7 +1264,7 @@ function addRecipeStepRow(step=''){
     if (!file) return;
     try{
       const rawDataUrl = await readFileAsRawDataUrl(file);
-      await openCropper(rawDataUrl, 1, 480, 0.65, (croppedDataUrl)=>{
+      await openCropper(rawDataUrl, NaN, 640, 0.65, (croppedDataUrl)=>{
         row._photoData = croppedDataUrl;
         thumb.src = croppedDataUrl; thumb.classList.remove('hidden');
         removeBtn.classList.remove('hidden');
@@ -1057,6 +1381,49 @@ function renderIngredients(){
 
 document.getElementById('new-ingredient-btn').addEventListener('click', ()=> openIngredientModal(null));
 
+document.getElementById('bulk-add-btn').addEventListener('click', ()=>{
+  document.getElementById('bulk-add-textarea').value = '';
+  openModal('bulk-add-modal');
+});
+
+document.getElementById('bulk-add-confirm-btn').addEventListener('click', async ()=>{
+  const raw = document.getElementById('bulk-add-textarea').value;
+  const names = raw.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+  if (names.length === 0){ toast('Paste at least one ingredient name'); return; }
+
+  const existingNames = new Set(Object.values(state.ingredients).map(i => (i.name||'').trim().toLowerCase()));
+  const seenInPaste = new Set();
+  let added = 0, autofilled = 0, skipped = 0;
+
+  for (const name of names){
+    const key = name.toLowerCase();
+    if (existingNames.has(key) || seenInPaste.has(key)){ skipped++; continue; }
+    seenInPaste.add(key);
+    const match = lookupCommonIngredient(name);
+    const data = {
+      name,
+      emoji: match ? match.emoji : '🛒',
+      photo: null,
+      unit: match ? match.unit : 'each',
+      isCustomUnit: false,
+      customUnits: [],
+      calories: match ? match.calories : 0,
+      gramsPerCup: 0,
+      packaged: false,
+      prices: {}
+    };
+    await addDoc(col('ingredients'), data);
+    added++;
+    if (match) autofilled++;
+  }
+
+  closeModals();
+  const bits = [`Added ${added} ingredient${added!==1?'s':''}`];
+  if (autofilled) bits.push(`${autofilled} autofilled`);
+  if (skipped) bits.push(`${skipped} skipped (already existed)`);
+  toast(bits.join(' · '));
+});
+
 const ingredientPhotoInput = document.getElementById('ingredient-photo-input');
 const ingredientPhotoPreview = document.getElementById('ingredient-photo-preview');
 const ingredientPhotoImg = document.getElementById('ingredient-photo-img');
@@ -1069,6 +1436,7 @@ function openIngredientModal(ingId){
   document.getElementById('ingredient-name').value = ing.name || '';
   document.getElementById('ingredient-calories').value = ing.calories ?? '';
   document.getElementById('ingredient-density').value = ing.gramsPerCup ?? '';
+  hideAutofillSuggestion();
 
   const unitSelect = document.getElementById('ingredient-unit');
   const customUnitWrap = document.getElementById('ingredient-custom-unit-wrap');
@@ -1118,6 +1486,43 @@ function openIngredientModal(ingId){
   document.getElementById('delete-ingredient-btn').classList.toggle('hidden', !ingId);
   openModal('ingredient-modal');
 }
+
+/* ---- ingredient autofill suggestion (built-in common-ingredients database) ---- */
+let autofillSuggestionTimer = null;
+let autofillPending = null; // the matched {emoji, unit, calories} waiting to be applied
+
+function hideAutofillSuggestion(){
+  document.getElementById('ingredient-autofill-suggestion').classList.add('hidden');
+  autofillPending = null;
+}
+function showAutofillSuggestion(name, data){
+  autofillPending = data;
+  document.getElementById('ingredient-autofill-text').textContent =
+    `Looks like "${name}" — autofill ${data.emoji} ${UNIT_LABEL[data.unit]||data.unit}, ${data.calories} kcal/${UNIT_LABEL[data.unit]||data.unit}?`;
+  document.getElementById('ingredient-autofill-suggestion').classList.remove('hidden');
+}
+document.getElementById('ingredient-name').addEventListener('input', (e)=>{
+  clearTimeout(autofillSuggestionTimer);
+  // Only offer this for brand-new ingredients — editing an existing one shouldn't
+  // suddenly suggest overwriting fields the person already set on purpose.
+  if (state.editing.ingredientId){ hideAutofillSuggestion(); return; }
+  const name = e.target.value;
+  autofillSuggestionTimer = setTimeout(()=>{
+    const match = lookupCommonIngredient(name);
+    if (match) showAutofillSuggestion(name.trim(), match);
+    else hideAutofillSuggestion();
+  }, 250);
+});
+document.getElementById('ingredient-autofill-apply').addEventListener('click', ()=>{
+  if (!autofillPending) return;
+  document.getElementById('ingredient-emoji').value = autofillPending.emoji;
+  document.getElementById('ingredient-unit').value = autofillPending.unit;
+  document.getElementById('ingredient-unit').dispatchEvent(new Event('change'));
+  document.getElementById('ingredient-calories').value = autofillPending.calories;
+  hideAutofillSuggestion();
+  toast('Autofilled — feel free to adjust anything');
+});
+document.getElementById('ingredient-autofill-dismiss').addEventListener('click', hideAutofillSuggestion);
 
 document.getElementById('ingredient-unit').addEventListener('change', (e)=>{
   const isCustom = e.target.value === '__custom__';
@@ -1175,14 +1580,18 @@ function addCustomUnitRow(cu = {name:'', direction:'smaller', factor:''}){
   row.className = 'cu-row';
   row.dataset.direction = cu.direction || 'smaller';
   row.innerHTML = `
-    <input type="text" class="cu-name" placeholder="e.g. clove or bulb" value="${cu.name ? escapeHtml(cu.name) : ''}" />
-    <div class="cu-dir-toggle">
-      <button type="button" class="cu-dir-btn ${row.dataset.direction==='smaller'?'active':''}" data-dir="smaller">smaller</button>
-      <button type="button" class="cu-dir-btn ${row.dataset.direction==='larger'?'active':''}" data-dir="larger">larger</button>
+    <div class="cu-row-top">
+      <input type="text" class="cu-name" placeholder="e.g. clove or bulb" value="${cu.name ? escapeHtml(cu.name) : ''}" />
+      <button type="button" class="cu-remove" aria-label="Remove custom unit">✕</button>
     </div>
-    <input type="number" class="cu-factor" min="0" step="any" placeholder="10" value="${cu.factor || cu.perIngredientUnit || ''}" />
-    <span class="cu-preview"></span>
-    <button type="button" class="cu-remove">✕</button>`;
+    <div class="cu-row-bottom">
+      <div class="cu-dir-toggle">
+        <button type="button" class="cu-dir-btn ${row.dataset.direction==='smaller'?'active':''}" data-dir="smaller">smaller</button>
+        <button type="button" class="cu-dir-btn ${row.dataset.direction==='larger'?'active':''}" data-dir="larger">larger</button>
+      </div>
+      <input type="number" class="cu-factor" min="0" step="any" placeholder="10" value="${cu.factor || cu.perIngredientUnit || ''}" />
+    </div>
+    <span class="cu-preview"></span>`;
 
   row.querySelectorAll('.cu-dir-btn').forEach(btn => {
     btn.addEventListener('click', ()=>{
