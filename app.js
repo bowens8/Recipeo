@@ -231,6 +231,8 @@ function toast(msg){
    MODAL HELPERS
    ============================================================ */
 const backdrop = document.getElementById('modal-backdrop');
+let cropReturnModalId = null; // which modal to reveal again once the crop overlay closes
+
 function openModal(id){
   backdrop.classList.remove('hidden');
   document.querySelectorAll('.modal').forEach(m=>m.classList.add('hidden'));
@@ -240,10 +242,32 @@ function closeModals(){
   backdrop.classList.add('hidden');
   if (typeof cropperInstance !== 'undefined' && cropperInstance){ cropperInstance.destroy(); cropperInstance = null; }
   cropConfirmHandler = null;
+  cropReturnModalId = null;
 }
-backdrop.addEventListener('click', (e)=>{ if (e.target === backdrop) closeModals(); });
+// The crop modal opens ON TOP of whichever editor is already open (recipe/ingredient),
+// so closing it should just reveal that editor again rather than closing everything.
+function closeCropOverlay(){
+  document.getElementById('crop-modal').classList.add('hidden');
+  if (typeof cropperInstance !== 'undefined' && cropperInstance){ cropperInstance.destroy(); cropperInstance = null; }
+  cropConfirmHandler = null;
+  if (cropReturnModalId && document.getElementById(cropReturnModalId)){
+    document.getElementById(cropReturnModalId).classList.remove('hidden');
+    cropReturnModalId = null;
+  } else {
+    closeModals();
+  }
+}
+function cropModalIsOpen(){
+  return !document.getElementById('crop-modal').classList.contains('hidden');
+}
+backdrop.addEventListener('click', (e)=>{
+  if (e.target !== backdrop) return;
+  cropModalIsOpen() ? closeCropOverlay() : closeModals();
+});
 document.querySelectorAll('.modal-close').forEach(b=>{
-  b.addEventListener('click', ()=> closeModals());
+  b.addEventListener('click', ()=>{
+    b.dataset.close === 'crop-modal' ? closeCropOverlay() : closeModals();
+  });
 });
 
 /* ============================================================
@@ -1155,7 +1179,13 @@ async function openCropper(rawDataUrl, aspectRatio, outputMaxDim, quality, onCon
     return;
   }
   cropConfirmHandler = { onConfirm, outputMaxDim, quality };
-  openModal('crop-modal');
+  // Remember whichever editor modal is currently open (recipe/ingredient) so we can
+  // reveal it again — rather than closing everything — once cropping is done.
+  const currentlyOpen = document.querySelector('.modal:not(.hidden)');
+  cropReturnModalId = currentlyOpen ? currentlyOpen.id : null;
+  backdrop.classList.remove('hidden');
+  if (currentlyOpen) currentlyOpen.classList.add('hidden');
+  document.getElementById('crop-modal').classList.remove('hidden');
   cropModalImg.onload = () => {
     if (cropperInstance) cropperInstance.destroy();
     cropperInstance = new Cropper(cropModalImg, {
@@ -1176,6 +1206,6 @@ document.getElementById('crop-confirm-btn').addEventListener('click', ()=>{
   const { onConfirm, outputMaxDim, quality } = cropConfirmHandler;
   const canvas = cropperInstance.getCroppedCanvas({ width: outputMaxDim, imageSmoothingQuality: 'high' });
   onConfirm(canvas.toDataURL('image/jpeg', quality));
-  closeModals();
+  closeCropOverlay();
 });
-document.getElementById('crop-cancel-btn').addEventListener('click', closeModals);
+document.getElementById('crop-cancel-btn').addEventListener('click', closeCropOverlay);
