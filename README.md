@@ -246,6 +246,13 @@ already knows about it. Leave the box unchecked for anything bought as an exact 
 (deli meat sliced to order, produce sold by weight, etc.) — those price per unit as
 before, with no rounding.
 
+Amounts under about 0.05 (in an ingredient's own unit) are treated as negligible
+everywhere — both when deciding whether a tiny overage forces an extra package (see
+above), and when deciding whether something needs to show up on the shopping list at
+all. So if a recipe needs 8.01 oz of something sold in 8 oz packages, buying that one
+package and checking it off doesn't leave a phantom "0.01 oz still needed" line behind
+next time you look — it's just done.
+
 ## Multiple people, one shared library
 
 Anyone can create their own account (Sign in screen → Create account) — this is meant
