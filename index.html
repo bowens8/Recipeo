@@ -281,7 +281,38 @@ cheddar cheese"></textarea>
     </div>
   </div>
 
-  <!-- Meal slot picker -->
+  <!-- Recipe overview: simple single-screen read view (ingredients + steps, no interaction) -->
+  <div id="recipe-overview-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3 id="overview-recipe-title">Recipe</h3>
+      <button class="icon-btn modal-close" data-close="recipe-overview-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <img id="overview-cover-img" class="rc-cover hidden" alt="" />
+      <div id="overview-servings" class="rc-servings" style="margin-bottom:16px;"></div>
+      <h4 style="margin-top:0;">Ingredients</h4>
+      <div id="overview-ingredient-list" class="cook-ingredient-list"></div>
+      <h4>Steps</h4>
+      <ol id="overview-steps-list" class="overview-steps-list"></ol>
+    </div>
+  </div>
+
+  <!-- Missing ingredients confirmation before Cook Mode -->
+  <div id="cook-confirm-modal" class="modal hidden">
+    <div class="modal-head">
+      <h3>Missing ingredients</h3>
+      <button class="icon-btn modal-close" data-close="cook-confirm-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-top:0;">Your pantry is short on a few things for <strong id="cook-confirm-recipe-name"></strong>:</p>
+      <div id="cook-confirm-missing-list" class="missing-list"></div>
+      <div class="modal-actions">
+        <button type="button" id="cook-confirm-cancel-btn" class="btn btn-ghost">Cancel</button>
+        <button type="button" id="cook-confirm-anyway-btn" class="btn btn-primary">Cook anyway</button>
+      </div>
+    </div>
+  </div>
+
   <div id="meal-modal" class="modal hidden">
     <div class="modal-head">
       <h3 id="meal-modal-title">Add meal</h3>
