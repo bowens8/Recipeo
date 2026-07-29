@@ -195,7 +195,10 @@ input[type="file"]{
 .missing-name{flex:1; font-weight:600; font-size:.9rem;}
 .missing-amounts{font-family:var(--font-mono); font-size:.78rem; color:var(--brick-dark);}
 
-.overview-steps-list{padding-left:22px; display:flex; flex-direction:column; gap:14px; margin:0;}
+.overview-steps-list{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px 28px;
+  padding-left:22px; margin:0; align-items:start;
+}
 .overview-steps-list li{font-size:1rem; line-height:1.55; padding-left:6px;}
 .overview-steps-list img{display:block; max-width:280px; width:100%; border-radius:10px; margin:8px 0;}
 
@@ -376,6 +379,7 @@ input[type="file"]{
   max-height:88vh; overflow-y:auto; box-shadow: 0 20px 60px rgba(0,0,0,.25);
 }
 .modal-wide{max-width:640px;}
+.modal-overview{max-width:960px;}
 .modal-head{
   display:flex; justify-content:space-between; align-items:center; padding:18px 22px;
   border-bottom:1.5px solid var(--paper-line); position:sticky; top:0; background:var(--paper);
@@ -407,9 +411,9 @@ input[type="file"]{
 }
 .cook-header h2{flex:1; text-align:center; font-size:1.15rem;}
 .cook-servings-label{font-size:.78rem; color:var(--ink-soft); font-family:var(--font-mono); min-width:34px; text-align:right;}
-.cook-body{max-width:720px; width:100%; margin:0 auto; padding:22px 20px 60px; display:flex; flex-direction:column; gap:30px;}
+.cook-body{max-width:1080px; width:100%; margin:0 auto; padding:22px 20px 60px; display:flex; flex-direction:column; gap:30px;}
 .cook-section h3{font-size:1.05rem; margin-bottom:12px;}
-.cook-ingredient-list{display:flex; flex-direction:column; gap:8px;}
+.cook-ingredient-list{display:flex; flex-direction:column; gap:8px; max-width:640px;}
 .cook-ing-item{
   display:flex; align-items:center; gap:12px; background:var(--paper);
   border:1.5px solid var(--paper-line); border-radius:11px; padding:12px 14px; cursor:pointer;
@@ -418,7 +422,7 @@ input[type="file"]{
 .cook-ing-item.checked{opacity:.45; text-decoration:line-through;}
 .cook-ing-name{flex:1; font-weight:600;}
 .cook-ing-qty{font-family:var(--font-mono); color:var(--brick); font-size:.9rem;}
-.cook-steps-list{display:flex; flex-direction:column; gap:16px;}
+.cook-steps-list{display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px; align-items:start;}
 .cook-step-card{
   background:var(--paper); border:1.5px solid var(--paper-line); border-radius:16px; padding:18px 20px;
 }
