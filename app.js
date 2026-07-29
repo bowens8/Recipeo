@@ -58,28 +58,41 @@ function convertQty(qty, fromUnit, toUnit, gramsPerCup){
   }
   return null;
 }
+// Convert a recipe quantity into an ingredient's own unit — checking that ingredient's
+// custom sub-units FIRST (e.g. "clove" -> "bulb" via a per-ingredient factor with no
+// global setup), then falling back to the standard weight/volume conversion above.
+function convertToIngredientUnit(qty, fromUnit, ing){
+  if (fromUnit === ing.unit) return qty;
+  const custom = (ing.customUnits||[]).find(c => c.name === fromUnit);
+  if (custom && Number(custom.perIngredientUnit) > 0) return qty / Number(custom.perIngredientUnit);
+  return convertQty(qty, fromUnit, ing.unit, ing.gramsPerCup);
+}
 // Base-unit helpers: every weight amount is tracked internally in grams,
 // every volume amount in milliliters, so amounts from different recipes
-// (2 tbsp here, 1 cup there) always combine cleanly with zero setup.
+// (2 tbsp here, 1 cup there) always combine cleanly with zero setup. Count-like and
+// custom units (e.g. "bulb") aren't subdivided further — they pass through as-is.
 function toBaseUnit(qty, unit){
   const cat = unitCategory(unit);
   if (cat === 'volume') return qty * VOLUME_TO_ML[unit];
   if (cat === 'weight') return qty * WEIGHT_TO_G[unit];
-  return qty; // count
+  return qty;
 }
 // Auto-pick the largest unit that "makes sense" for a grocery list — e.g. show
 // 3 lb instead of 1360 g, or 2 cups instead of 32 tbsp — with zero configuration.
 // Leans metric or US-customary based on which system the ingredient's own
-// reference unit belongs to, purely as a display preference.
+// reference unit belongs to, purely as a display preference. Custom/count units
+// (e.g. "each", "bulb") aren't auto-scaled — they're shown in their own unit as-is.
 const WEIGHT_METRIC  = [['kg',1000], ['g',1]];
 const WEIGHT_US      = [['lb',453.592], ['oz',28.3495]];
 const VOLUME_METRIC  = [['l',1000], ['ml',1]];
 const VOLUME_US      = [['cup',236.588], ['tbsp',14.7868], ['tsp',4.92892]];
 function pickDisplayUnit(baseQty, category, preferredUnit){
-  if (category === 'count') return { unit:'each', qty: baseQty };
-  let table;
-  if (category === 'weight') table = (preferredUnit==='g'||preferredUnit==='kg') ? WEIGHT_METRIC : WEIGHT_US;
-  else table = (preferredUnit==='ml'||preferredUnit==='l') ? VOLUME_METRIC : VOLUME_US;
+  if (category !== 'weight' && category !== 'volume'){
+    return { unit: category === 'count' ? 'each' : preferredUnit, qty: baseQty };
+  }
+  const table = category === 'weight'
+    ? ((preferredUnit==='g'||preferredUnit==='kg') ? WEIGHT_METRIC : WEIGHT_US)
+    : ((preferredUnit==='ml'||preferredUnit==='l') ? VOLUME_METRIC : VOLUME_US);
   for (const [unit, factor] of table){
     const val = baseQty / factor;
     if (val >= 1) return { unit, qty: val };
@@ -277,7 +290,7 @@ function recipeCaloriesTotal(recipe){
     const ing = state.ingredients[ri.ingredientId];
     if (!ing) return sum;
     const rowUnit = ri.unit || ing.unit;
-    const qtyInCanonicalUnit = convertQty(Number(ri.qty)||0, rowUnit, ing.unit, ing.gramsPerCup);
+    const qtyInCanonicalUnit = convertToIngredientUnit(Number(ri.qty)||0, rowUnit, ing);
     if (qtyInCanonicalUnit === null) return sum; // can't reconcile units, skip rather than guess
     return sum + (Number(ing.calories)||0) * qtyInCanonicalUnit;
   }, 0);
@@ -560,7 +573,7 @@ function renderShoppingList(){
       if (!ing) return;
       const rowUnit = ri.unit || ing.unit;
       const rawQty = (Number(ri.qty)||0) * scale;
-      const converted = convertQty(rawQty, rowUnit, ing.unit, ing.gramsPerCup);
+      const converted = convertToIngredientUnit(rawQty, rowUnit, ing);
       if (converted !== null){
         neededBase[ri.ingredientId] = (neededBase[ri.ingredientId]||0) + toBaseUnit(converted, ing.unit);
       } else {
@@ -825,18 +838,31 @@ function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:''}){
   row.innerHTML = `
     <select class="ri-ingredient">${ingredientOptionsHtml(ri.ingredientId)}</select>
     <input type="number" class="ri-qty" placeholder="qty" step="any" min="0" value="${ri.qty ?? ''}" />
-    <select class="ri-unit">${unitOptionsHtml(initialUnit)}</select>
+    <select class="ri-unit">${unitOptionsHtml(initialUnit, initialIng)}</select>
     <button type="button" class="ri-remove">✕</button>`;
   row.querySelector('.ri-ingredient').addEventListener('change', (e)=>{
     const ing = state.ingredients[e.target.value];
-    if (ing) row.querySelector('.ri-unit').value = ing.unit; // default to that ingredient's usual unit; still editable
+    // rebuild the unit list for the newly-chosen ingredient (it may have its own custom units)
+    row.querySelector('.ri-unit').innerHTML = unitOptionsHtml(ing ? ing.unit : 'g', ing);
   });
   row.querySelector('.ri-remove').addEventListener('click', ()=> row.remove());
   recipeIngredientsEl.appendChild(row);
 }
-function unitOptionsHtml(selected){
-  return Object.keys(UNIT_LABEL).map(u =>
-    `<option value="${u}" ${u===selected?'selected':''}>${UNIT_LABEL[u]}</option>`).join('');
+// Builds the <option> list for a recipe-row unit picker: the standard units, plus
+// whichever custom unit(s) belong to the currently-selected ingredient (its own custom
+// base unit, e.g. "bulb", and any custom sub-units defined on it, e.g. "clove").
+function unitOptionsHtml(selected, ing){
+  const opts = Object.keys(UNIT_LABEL).map(u =>
+    `<option value="${u}" ${u===selected?'selected':''}>${UNIT_LABEL[u]}</option>`);
+  if (ing){
+    const customNames = [];
+    if (ing.isCustomUnit && ing.unit) customNames.push(ing.unit);
+    (ing.customUnits||[]).forEach(c => { if (c.name) customNames.push(c.name); });
+    customNames.forEach(name => {
+      opts.push(`<option value="${escapeHtml(name)}" ${name===selected?'selected':''}>${escapeHtml(name)}</option>`);
+    });
+  }
+  return opts.join('');
 }
 document.getElementById('add-recipe-ingredient').addEventListener('click', ()=> addRecipeIngredientRow());
 
@@ -990,13 +1016,29 @@ const ingredientPhotoImg = document.getElementById('ingredient-photo-img');
 
 function openIngredientModal(ingId){
   state.editing.ingredientId = ingId;
-  const ing = ingId ? state.ingredients[ingId] : { emoji:'🥕', name:'', unit:'g', calories:'', prices:{}, photo:null, packaged:false };
+  const ing = ingId ? state.ingredients[ingId] : { emoji:'🥕', name:'', unit:'g', calories:'', prices:{}, photo:null, packaged:false, isCustomUnit:false, customUnits:[] };
   document.getElementById('ingredient-modal-title').textContent = ingId ? 'Edit ingredient' : 'New ingredient';
   document.getElementById('ingredient-emoji').value = ing.emoji || '🥕';
   document.getElementById('ingredient-name').value = ing.name || '';
-  document.getElementById('ingredient-unit').value = ing.unit || 'g';
   document.getElementById('ingredient-calories').value = ing.calories ?? '';
   document.getElementById('ingredient-density').value = ing.gramsPerCup ?? '';
+
+  const unitSelect = document.getElementById('ingredient-unit');
+  const customUnitWrap = document.getElementById('ingredient-custom-unit-wrap');
+  const customUnitNameInput = document.getElementById('ingredient-custom-unit-name');
+  if (ing.isCustomUnit){
+    unitSelect.value = '__custom__';
+    customUnitNameInput.value = ing.unit || '';
+    customUnitWrap.classList.remove('hidden');
+  } else {
+    unitSelect.value = ing.unit || 'g';
+    customUnitNameInput.value = '';
+    customUnitWrap.classList.add('hidden');
+  }
+
+  const customUnitsEl = document.getElementById('ingredient-custom-units');
+  customUnitsEl.innerHTML = '';
+  (ing.customUnits && ing.customUnits.length ? ing.customUnits : []).forEach(cu => addCustomUnitRow(cu, ing.unit));
 
   state.editing.ingredientPhoto = ing.photo || null;
   ingredientPhotoInput.value = '';
@@ -1021,6 +1063,45 @@ function openIngredientModal(ingId){
   document.getElementById('delete-ingredient-btn').classList.toggle('hidden', !ingId);
   openModal('ingredient-modal');
 }
+
+document.getElementById('ingredient-unit').addEventListener('change', (e)=>{
+  const isCustom = e.target.value === '__custom__';
+  document.getElementById('ingredient-custom-unit-wrap').classList.toggle('hidden', !isCustom);
+  if (isCustom) document.getElementById('ingredient-custom-unit-name').focus();
+  refreshCustomUnitSuffixes();
+});
+document.getElementById('ingredient-custom-unit-name').addEventListener('input', refreshCustomUnitSuffixes);
+
+function currentUnitLabelForModal(){
+  const unitSelectVal = document.getElementById('ingredient-unit').value;
+  if (unitSelectVal === '__custom__'){
+    return document.getElementById('ingredient-custom-unit-name').value.trim() || 'unit';
+  }
+  return UNIT_LABEL[unitSelectVal] || unitSelectVal;
+}
+function refreshCustomUnitSuffixes(){
+  const label = currentUnitLabelForModal();
+  document.querySelectorAll('#ingredient-custom-units .cu-suffix').forEach(span => {
+    span.textContent = `per 1 ${label}`;
+  });
+}
+
+function addCustomUnitRow(cu = {name:'', perIngredientUnit:''}, ingUnitLabel){
+  const row = document.createElement('div');
+  row.className = 'cu-row';
+  const suffixUnit = ingUnitLabel || document.getElementById('ingredient-unit').value;
+  row.innerHTML = `
+    <input type="text" class="cu-name" placeholder="e.g. clove" value="${cu.name ? escapeHtml(cu.name) : ''}" />
+    <span class="cu-eq">=</span>
+    <input type="number" class="cu-equals" min="0" step="any" placeholder="10" value="${cu.perIngredientUnit || ''}" />
+    <span class="cu-suffix">per 1 ${escapeHtml(UNIT_LABEL[suffixUnit] || suffixUnit || 'unit')}</span>
+    <button type="button" class="cu-remove">✕</button>`;
+  row.querySelector('.cu-remove').addEventListener('click', ()=> row.remove());
+  document.getElementById('ingredient-custom-units').appendChild(row);
+}
+document.getElementById('add-custom-unit-btn').addEventListener('click', ()=> {
+  addCustomUnitRow(undefined, currentUnitLabelForModal());
+});
 
 document.getElementById('ingredient-packaged').addEventListener('change', (e)=>{
   document.getElementById('ingredient-prices').classList.toggle('packaged', e.target.checked);
@@ -1059,6 +1140,23 @@ document.getElementById('ingredient-photo-remove').addEventListener('click', ()=
 document.getElementById('save-ingredient-btn').addEventListener('click', async ()=>{
   const name = document.getElementById('ingredient-name').value.trim();
   if (!name){ toast('Give the ingredient a name'); return; }
+
+  const unitSelectVal = document.getElementById('ingredient-unit').value;
+  let unit, isCustomUnit;
+  if (unitSelectVal === '__custom__'){
+    unit = document.getElementById('ingredient-custom-unit-name').value.trim();
+    if (!unit){ toast('Enter a name for the custom unit (e.g. "bulb")'); return; }
+    isCustomUnit = true;
+  } else {
+    unit = unitSelectVal;
+    isCustomUnit = false;
+  }
+
+  const customUnits = Array.from(document.querySelectorAll('#ingredient-custom-units .cu-row')).map(row => ({
+    name: row.querySelector('.cu-name').value.trim(),
+    perIngredientUnit: Number(row.querySelector('.cu-equals').value) || 0
+  })).filter(cu => cu.name && cu.perIngredientUnit > 0);
+
   const prices = {};
   document.querySelectorAll('#ingredient-prices .price-row').forEach(row => {
     const store = row.dataset.store;
@@ -1073,7 +1171,9 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     name,
     emoji: document.getElementById('ingredient-emoji').value.trim() || '🥕',
     photo: state.editing.ingredientPhoto || null,
-    unit: document.getElementById('ingredient-unit').value,
+    unit,
+    isCustomUnit,
+    customUnits,
     calories: Number(document.getElementById('ingredient-calories').value)||0,
     gramsPerCup: Number(document.getElementById('ingredient-density').value)||0,
     packaged: document.getElementById('ingredient-packaged').checked,
