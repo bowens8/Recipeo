@@ -934,6 +934,7 @@ function renderShoppingList(){
   let grandTotal = 0;
   const storeSubtotals = {}; // store -> $ (items assigned to it as the cheapest option)
   let missingPriceCount = 0;
+  const anyStoresOn = STORES.some(s => state.storeSettings[s]);
 
   const itemsHtml = rows.map(([id, baseQty]) => {
     const ing = state.ingredients[id];
@@ -941,8 +942,8 @@ function renderShoppingList(){
     const category = unitCategory(ing.unit);
     const neededQtyInIngUnit = baseQty / (toBaseUnit(1, ing.unit) || 1);
 
-    const best = cheapestOption(ing, neededQtyInIngUnit);
-    let priceHtml, amountHtml, pantryQty;
+    const best = anyStoresOn ? cheapestOption(ing, neededQtyInIngUnit) : null;
+    let priceHtml, amountHtml, pantryQty, amountClass = 's-amount';
 
     if (best){
       grandTotal += best.cost;
@@ -964,6 +965,15 @@ function renderShoppingList(){
         amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
         pantryQty = best.boughtQtyInIngUnit;
       }
+    } else if (!anyStoresOn){
+      // No store picked at all yet — "no price set" on every single item is just noise
+      // in that state, not useful feedback. Skip it and let the amount stand on its own,
+      // larger, since it's the only thing worth showing right now.
+      priceHtml = '';
+      amountClass = 's-amount s-amount-large';
+      const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
+      amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
+      pantryQty = neededQtyInIngUnit;
     } else {
       missingPriceCount++;
       priceHtml = `<span class="s-noprice">no price set${ing.packaged ? ' / no package size' : ''}</span>`;
@@ -978,7 +988,7 @@ function renderShoppingList(){
       <span class="s-name">${escapeHtml(ing.name)}</span>
       <span class="s-price-block">
         ${priceHtml}
-        <span class="s-amount">${amountHtml}</span>
+        <span class="${amountClass}">${amountHtml}</span>
       </span>
     </label>`;
   }).join('');
@@ -1006,7 +1016,6 @@ function renderShoppingList(){
   });
   updateShoppingModeCount();
 
-  const anyStoresOn = STORES.some(s => state.storeSettings[s]);
   if (!anyStoresOn){
     totalEl.innerHTML = `<span>Pick at least one store above to see prices.</span>`;
   } else {
