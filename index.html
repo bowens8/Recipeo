@@ -113,7 +113,10 @@
     <section id="tab-ingredients" class="tab-panel">
       <div class="panel-head">
         <h2>Ingredient Library</h2>
-        <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
+        <div class="panel-head-right">
+          <button id="bulk-add-btn" class="btn btn-ghost">⚡ Quick add multiple</button>
+          <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
+        </div>
       </div>
       <div id="ingredient-list" class="ingredient-table"></div>
     </section>
@@ -179,8 +182,13 @@
         <button type="button" id="ingredient-photo-remove" class="btn btn-ghost btn-small">Remove photo</button>
       </div>
       <label>Name
-        <input type="text" id="ingredient-name" placeholder="e.g. Carrot" />
+        <input type="text" id="ingredient-name" placeholder="e.g. Carrot" autocomplete="off" />
       </label>
+      <div id="ingredient-autofill-suggestion" class="autofill-suggestion hidden">
+        <span id="ingredient-autofill-text"></span>
+        <button type="button" id="ingredient-autofill-apply" class="btn btn-ghost btn-small">Use these</button>
+        <button type="button" id="ingredient-autofill-dismiss" class="icon-btn" aria-label="Dismiss">✕</button>
+      </div>
       <div class="field-row">
         <label>Unit
           <select id="ingredient-unit">
@@ -248,6 +256,31 @@
     </div>
   </div>
 
+  <!-- Bulk add ingredients -->
+  <div id="bulk-add-modal" class="modal hidden">
+    <div class="modal-head">
+      <h3>Quick add multiple ingredients</h3>
+      <button class="icon-btn modal-close" data-close="bulk-add-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>Paste ingredient names — one per line, or comma-separated
+        <textarea id="bulk-add-textarea" rows="8" placeholder="chicken breast
+garlic
+olive oil
+salt
+cheddar cheese"></textarea>
+      </label>
+      <p class="hint">Names that match something in Recipeo's built-in list (common pantry staples, produce,
+        proteins, spices, etc.) get their emoji, unit, and calories filled in automatically. Anything else
+        still gets created — just with a blank emoji and 0 calories for you to fill in later. Names that
+        already exist in your library are skipped.</p>
+      <div class="modal-actions">
+        <span></span>
+        <button type="button" id="bulk-add-confirm-btn" class="btn btn-primary">Add ingredients</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Meal slot picker -->
   <div id="meal-modal" class="modal hidden">
     <div class="modal-head">
@@ -255,9 +288,19 @@
       <button class="icon-btn modal-close" data-close="meal-modal">✕</button>
     </div>
     <div class="modal-body">
+      <label>Meal
+        <select id="meal-type-select">
+          <option value="breakfast">🍳 Breakfast</option>
+          <option value="lunch">🥪 Lunch</option>
+          <option value="dinner">🍽️ Dinner</option>
+          <option value="snack">🍿 Snack</option>
+        </select>
+      </label>
+
       <div class="meal-type-toggle">
         <button class="toggle-btn active" data-mealtype="cook" id="toggle-cook">Cook something</button>
         <button class="toggle-btn" data-mealtype="leftover" id="toggle-leftover">Eat leftovers</button>
+        <button class="toggle-btn" data-mealtype="quick" id="toggle-quick">Quick item</button>
       </div>
 
       <div id="meal-cook-fields">
@@ -282,6 +325,25 @@
         <label>Servings eaten today
           <input type="number" id="meal-leftover-servings" min="1" value="1" />
         </label>
+      </div>
+
+      <div id="meal-quick-fields" class="hidden">
+        <p class="hint" style="margin-top:0;">For things that aren't really a "recipe" — cereal, coffee, a piece of fruit. Pick the ingredient and how much.</p>
+        <label>Ingredient
+          <div class="ing-combo" id="meal-quick-ingredient-combo">
+            <input type="text" class="ing-combo-search" placeholder="Search ingredients…" autocomplete="off" />
+            <input type="hidden" id="meal-quick-ingredient" />
+            <div class="ing-combo-list hidden"></div>
+          </div>
+        </label>
+        <div class="field-row">
+          <label>Amount
+            <input type="number" id="meal-quick-qty" min="0" step="any" value="1" />
+          </label>
+          <label>Unit
+            <select id="meal-quick-unit"></select>
+          </label>
+        </div>
       </div>
 
       <div class="modal-actions">
@@ -312,6 +374,25 @@
         <button type="button" id="crop-confirm-btn" class="btn btn-primary">Use this photo</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Cook Mode — full-screen, independent overlay: ingredients to gather + scrollable steps -->
+<div id="cook-overlay" class="cook-overlay hidden">
+  <div class="cook-header">
+    <button id="cook-close-btn" class="icon-btn" aria-label="Close cook mode">✕</button>
+    <h2 id="cook-recipe-title">Recipe</h2>
+    <span id="cook-servings-label" class="cook-servings-label"></span>
+  </div>
+  <div class="cook-body">
+    <section class="cook-section">
+      <h3>🛒 Gather these</h3>
+      <div id="cook-ingredient-list" class="cook-ingredient-list"></div>
+    </section>
+    <section class="cook-section">
+      <h3>📋 Steps</h3>
+      <div id="cook-steps-list" class="cook-steps-list"></div>
+    </section>
   </div>
 </div>
 
