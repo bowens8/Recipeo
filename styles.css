@@ -234,10 +234,10 @@ input[type="file"]{
 .shopping-total{
   font-family:var(--font-mono); font-size:.95rem; background:var(--mustard-soft);
   border:1.5px solid #e3c479; border-radius:11px; padding:10px 16px; margin-bottom:14px;
-  max-width:640px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
 }
 .shopping-total .grand{font-weight:700; color:var(--brick-dark);}
-.shopping-list{display:flex; flex-direction:column; gap:8px; max-width:640px;}
+.shopping-list{display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:10px; align-items:start;}
 .shop-item{
   display:flex; align-items:center; gap:12px; background:var(--paper);
   border:1.5px solid var(--paper-line); border-radius:11px; padding:11px 14px;
