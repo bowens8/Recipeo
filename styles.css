@@ -268,6 +268,14 @@ input[type="file"]{
 .checkbox-inline{display:flex; align-items:center; gap:9px; font-size:.88rem; font-weight:600; color:var(--ink); margin-bottom:8px;}
 .checkbox-inline input{margin:0;}
 
+/* custom units */
+.custom-units-list{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
+.cu-row{display:grid; grid-template-columns:1fr 20px 70px 1fr 28px; align-items:center; gap:8px;}
+.cu-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono); font-size:.85rem;}
+.cu-row .cu-eq{text-align:center; color:var(--ink-soft); font-weight:700;}
+.cu-row .cu-suffix{font-size:.78rem; color:var(--ink-soft); white-space:nowrap;}
+.cu-remove{background:transparent; border:none; color:var(--danger); font-size:1.1rem;}
+
 /* ============ Photos (ingredient / recipe / step) ============ */
 .photo-preview{display:flex; align-items:center; gap:12px; margin:-6px 0 14px;}
 .photo-preview img{width:60px; height:60px; object-fit:cover; border-radius:10px; border:1.5px solid var(--paper-line);}
