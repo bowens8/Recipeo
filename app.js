@@ -58,14 +58,42 @@ function convertQty(qty, fromUnit, toUnit, gramsPerCup){
   }
   return null;
 }
+// How many of an ingredient's own unit is 1 of this custom unit worth?
+// direction 'smaller' (e.g. clove, 10 per bulb): factor custom-units = 1 ingredient-unit.
+// direction 'larger'  (e.g. bulb, worth 10 cloves): 1 custom-unit = factor ingredient-units.
+// Falls back to the legacy `perIngredientUnit` field for ingredients saved before the
+// "larger unit" option existed (always meant "smaller", so treated the same way here).
+function customUnitBaseFactor(cu){
+  const direction = cu.direction || 'smaller';
+  const rawFactor = direction === 'larger' ? cu.factor : (cu.factor ?? cu.perIngredientUnit);
+  const factor = Number(rawFactor) || 0;
+  if (factor <= 0) return 0;
+  return direction === 'larger' ? factor : (1 / factor);
+}
 // Convert a recipe quantity into an ingredient's own unit — checking that ingredient's
-// custom sub-units FIRST (e.g. "clove" -> "bulb" via a per-ingredient factor with no
-// global setup), then falling back to the standard weight/volume conversion above.
+// custom units FIRST (smaller sub-units like "clove", or larger container units like
+// "bulb", each defined per-ingredient with no global setup), then falling back to the
+// standard weight/volume conversion above.
 function convertToIngredientUnit(qty, fromUnit, ing){
   if (fromUnit === ing.unit) return qty;
   const custom = (ing.customUnits||[]).find(c => c.name === fromUnit);
-  if (custom && Number(custom.perIngredientUnit) > 0) return qty / Number(custom.perIngredientUnit);
+  if (custom){
+    const baseFactor = customUnitBaseFactor(custom); // 1 custom-unit = baseFactor ingredient-units
+    if (baseFactor > 0) return qty * baseFactor;
+  }
   return convertQty(qty, fromUnit, ing.unit, ing.gramsPerCup);
+}
+// The reverse: convert a quantity FROM an ingredient's own unit INTO some other unit of
+// theirs — used so a store's price can be entered per a "larger" custom unit (e.g. per
+// bulb) even though everything else is tracked in the ingredient's base unit (clove).
+function convertFromIngredientUnit(qtyInIngUnit, toUnit, ing){
+  if (toUnit === ing.unit) return qtyInIngUnit;
+  const custom = (ing.customUnits||[]).find(c => c.name === toUnit);
+  if (custom){
+    const baseFactor = customUnitBaseFactor(custom);
+    if (baseFactor > 0) return qtyInIngUnit / baseFactor;
+  }
+  return null;
 }
 // Base-unit helpers: every weight amount is tracked internally in grams,
 // every volume amount in milliliters, so amounts from different recipes
@@ -518,37 +546,53 @@ function renderStoreChecks(){
 }
 
 // Reads a store's price entry for an ingredient in a format-agnostic way — handles
-// both the new {price, packageSize} shape and legacy plain-number prices.
+// the {price, packageSize, unit} shape, plus legacy shapes (plain numbers, or objects
+// without a `unit`, which always meant "priced per the ingredient's own unit").
 function priceEntryFor(ing, store){
   const raw = ing.prices ? ing.prices[store] : null;
   if (raw === null || raw === undefined || raw === '') return null;
-  if (typeof raw === 'number') return { price: raw, packageSize: 0 };
+  if (typeof raw === 'number') return { price: raw, packageSize: 0, unit: ing.unit };
   const price = Number(raw.price);
   if (!price || price <= 0) return null;
-  return { price, packageSize: Number(raw.packageSize) || 0 };
+  return { price, packageSize: Number(raw.packageSize) || 0, unit: raw.unit || ing.unit };
 }
 
-// Cost of buying enough of this ingredient at one store to cover neededQty (in the
-// ingredient's own unit). For packaged items this rounds UP to whole packages.
-// Returns {cost, store, packages, packageSize, boughtQty} or null if this store can't
-// price it (no price entered, or packaged with no package size entered).
-function storeCostFor(ing, store, neededQty){
+// Cost of buying enough of this ingredient at one store to cover neededQtyInIngUnit
+// (expressed in the ingredient's own unit). The store may price this ingredient in a
+// different unit of its own (e.g. per "bulb" while the ingredient's base unit is
+// "clove") — that gets converted first. For packaged items this rounds UP to whole
+// packages. Returns {cost, store, packages, packageSize, priceUnit, boughtQtyInIngUnit}
+// or null if this store can't price it (no price entered, package size missing, or the
+// chosen price unit can't be resolved for this ingredient).
+function storeCostFor(ing, store, neededQtyInIngUnit){
   const entry = priceEntryFor(ing, store);
   if (!entry) return null;
+  const qtyInPriceUnit = convertFromIngredientUnit(neededQtyInIngUnit, entry.unit, ing);
+  if (qtyInPriceUnit === null) return null;
+
   if (ing.packaged){
     if (!entry.packageSize || entry.packageSize <= 0) return null;
-    const packages = Math.max(1, Math.ceil(neededQty / entry.packageSize));
-    return { cost: packages * entry.price, store, packages, packageSize: entry.packageSize, boughtQty: packages * entry.packageSize };
+    const packages = Math.max(1, Math.ceil(qtyInPriceUnit / entry.packageSize));
+    const boughtQtyInPriceUnit = packages * entry.packageSize;
+    return {
+      cost: packages * entry.price, store, packages,
+      packageSize: entry.packageSize, priceUnit: entry.unit,
+      boughtQtyInIngUnit: convertToIngredientUnit(boughtQtyInPriceUnit, entry.unit, ing)
+    };
   }
-  return { cost: neededQty * entry.price, store, packages: null, packageSize: 0, boughtQty: neededQty };
+  return {
+    cost: qtyInPriceUnit * entry.price, store, packages: null,
+    packageSize: 0, priceUnit: entry.unit,
+    boughtQtyInIngUnit: neededQtyInIngUnit
+  };
 }
 
 // Cheapest option among currently-enabled stores for the quantity actually needed.
-function cheapestOption(ing, neededQty){
+function cheapestOption(ing, neededQtyInIngUnit){
   let best = null;
   STORES.forEach(store => {
     if (!state.storeSettings[store]) return;
-    const opt = storeCostFor(ing, store, neededQty);
+    const opt = storeCostFor(ing, store, neededQtyInIngUnit);
     if (!opt) return;
     if (best === null || opt.cost < best.cost) best = opt;
   });
@@ -621,14 +665,17 @@ function renderShoppingList(){
       storeSubtotals[best.store] = (storeSubtotals[best.store]||0) + best.cost;
       priceHtml = `<span class="s-price">$${best.cost.toFixed(2)} <span style="font-weight:400;">at ${escapeHtml(best.store)}</span></span>`;
       if (best.packages !== null){
-        // packaged item: show the whole-package purchase, not the raw fractional need
+        // packaged item: show the whole-package purchase, not the raw fractional need,
+        // sized in whatever unit that store's price was entered in (base or a custom
+        // "larger" unit, e.g. bulb)
         const pkgWord = best.packages === 1 ? 'package' : 'packages';
-        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${UNIT_LABEL[ing.unit]||ing.unit} each)`;
-        pantryQty = best.boughtQty; // credit the full purchased amount, incl. rounding leftover
+        const pkgUnitLabel = UNIT_LABEL[best.priceUnit] || best.priceUnit;
+        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each)`;
+        pantryQty = best.boughtQtyInIngUnit; // credit the full purchased amount, incl. rounding leftover
       } else {
         const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
         amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
-        pantryQty = neededQtyInIngUnit;
+        pantryQty = best.boughtQtyInIngUnit;
       }
     } else {
       missingPriceCount++;
@@ -1038,7 +1085,11 @@ function openIngredientModal(ingId){
 
   const customUnitsEl = document.getElementById('ingredient-custom-units');
   customUnitsEl.innerHTML = '';
-  (ing.customUnits && ing.customUnits.length ? ing.customUnits : []).forEach(cu => addCustomUnitRow(cu, ing.unit));
+  (ing.customUnits && ing.customUnits.length ? ing.customUnits : []).forEach(cu => addCustomUnitRow({
+    name: cu.name,
+    direction: cu.direction || 'smaller',
+    factor: cu.direction ? cu.factor : (cu.factor ?? cu.perIngredientUnit) // normalize legacy rows
+  }));
 
   state.editing.ingredientPhoto = ing.photo || null;
   ingredientPhotoInput.value = '';
@@ -1051,14 +1102,18 @@ function openIngredientModal(ingId){
 
   const prices = ing.prices || {};
   priceContainer.innerHTML = STORES.map(store => {
-    const entry = priceEntryFor(ing, store) || { price:'', packageSize:'' };
+    const entry = priceEntryFor(ing, store) || { price:'', packageSize:'', unit: ing.unit };
+    const priceUnit = (entry.unit && entry.unit !== ing.unit) ? entry.unit : '';
     return `
     <div class="price-row" data-store="${store}">
       <span>${store}</span>
       <input type="number" class="price-input" min="0" step="0.01" placeholder="price $" value="${entry.price || ''}" />
-      <input type="number" class="package-size-input" min="0" step="any" placeholder="pkg size (${UNIT_LABEL[ing.unit]||ing.unit})" value="${entry.packageSize || ''}" />
+      <input type="number" class="package-size-input" min="0" step="any" placeholder="pkg size" value="${entry.packageSize || ''}" />
+      <select class="price-unit-select" data-selected="${escapeHtml(priceUnit)}"></select>
     </div>`;
   }).join('');
+
+  refreshCustomUnitsUI(); // builds price-unit-select options and restores each store's saved selection
 
   document.getElementById('delete-ingredient-btn').classList.toggle('hidden', !ingId);
   openModal('ingredient-modal');
@@ -1068,9 +1123,9 @@ document.getElementById('ingredient-unit').addEventListener('change', (e)=>{
   const isCustom = e.target.value === '__custom__';
   document.getElementById('ingredient-custom-unit-wrap').classList.toggle('hidden', !isCustom);
   if (isCustom) document.getElementById('ingredient-custom-unit-name').focus();
-  refreshCustomUnitSuffixes();
+  refreshCustomUnitsUI();
 });
-document.getElementById('ingredient-custom-unit-name').addEventListener('input', refreshCustomUnitSuffixes);
+document.getElementById('ingredient-custom-unit-name').addEventListener('input', refreshCustomUnitsUI);
 
 function currentUnitLabelForModal(){
   const unitSelectVal = document.getElementById('ingredient-unit').value;
@@ -1079,29 +1134,71 @@ function currentUnitLabelForModal(){
   }
   return UNIT_LABEL[unitSelectVal] || unitSelectVal;
 }
-function refreshCustomUnitSuffixes(){
-  const label = currentUnitLabelForModal();
-  document.querySelectorAll('#ingredient-custom-units .cu-suffix').forEach(span => {
-    span.textContent = `per 1 ${label}`;
+
+// Recomputes every custom-unit row's live preview sentence, and rebuilds each store's
+// price-unit dropdown (base unit + any "larger" custom units currently defined) —
+// called whenever a custom-unit row or the ingredient's own unit changes.
+function refreshCustomUnitsUI(){
+  const baseLabel = currentUnitLabelForModal();
+  const largerUnits = []; // names of currently-defined "larger" custom units
+
+  document.querySelectorAll('#ingredient-custom-units .cu-row').forEach(row => {
+    const name = row.querySelector('.cu-name').value.trim();
+    const direction = row.dataset.direction || 'smaller';
+    const factor = row.querySelector('.cu-factor').value;
+    const preview = row.querySelector('.cu-preview');
+    if (!name || !factor || Number(factor) <= 0){
+      preview.textContent = 'Fill in a name and a number above';
+    } else if (direction === 'smaller'){
+      preview.textContent = `${factor} ${name} = 1 ${baseLabel}`;
+    } else {
+      preview.textContent = `1 ${name} = ${factor} ${baseLabel}`;
+      largerUnits.push(name);
+    }
+  });
+
+  // Rebuild each store's price-unit dropdown, preserving the current selection if it's
+  // still valid (base unit or one of the still-defined larger units).
+  const priceContainer = document.getElementById('ingredient-prices');
+  priceContainer.classList.toggle('has-larger-units', largerUnits.length > 0);
+  priceContainer.querySelectorAll('.price-unit-select').forEach(sel => {
+    const prevValue = sel.value || sel.dataset.selected || '';
+    const options = [`<option value="">${escapeHtml(baseLabel)} (default)</option>`]
+      .concat(largerUnits.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`));
+    sel.innerHTML = options.join('');
+    sel.value = largerUnits.includes(prevValue) ? prevValue : '';
   });
 }
 
-function addCustomUnitRow(cu = {name:'', perIngredientUnit:''}, ingUnitLabel){
+function addCustomUnitRow(cu = {name:'', direction:'smaller', factor:''}){
   const row = document.createElement('div');
   row.className = 'cu-row';
-  const suffixUnit = ingUnitLabel || document.getElementById('ingredient-unit').value;
+  row.dataset.direction = cu.direction || 'smaller';
   row.innerHTML = `
-    <input type="text" class="cu-name" placeholder="e.g. clove" value="${cu.name ? escapeHtml(cu.name) : ''}" />
-    <span class="cu-eq">=</span>
-    <input type="number" class="cu-equals" min="0" step="any" placeholder="10" value="${cu.perIngredientUnit || ''}" />
-    <span class="cu-suffix">per 1 ${escapeHtml(UNIT_LABEL[suffixUnit] || suffixUnit || 'unit')}</span>
+    <input type="text" class="cu-name" placeholder="e.g. clove or bulb" value="${cu.name ? escapeHtml(cu.name) : ''}" />
+    <div class="cu-dir-toggle">
+      <button type="button" class="cu-dir-btn ${row.dataset.direction==='smaller'?'active':''}" data-dir="smaller">smaller</button>
+      <button type="button" class="cu-dir-btn ${row.dataset.direction==='larger'?'active':''}" data-dir="larger">larger</button>
+    </div>
+    <input type="number" class="cu-factor" min="0" step="any" placeholder="10" value="${cu.factor || cu.perIngredientUnit || ''}" />
+    <span class="cu-preview"></span>
     <button type="button" class="cu-remove">✕</button>`;
-  row.querySelector('.cu-remove').addEventListener('click', ()=> row.remove());
+
+  row.querySelectorAll('.cu-dir-btn').forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      row.dataset.direction = btn.dataset.dir;
+      row.querySelectorAll('.cu-dir-btn').forEach(b => b.classList.toggle('active', b===btn));
+      refreshCustomUnitsUI();
+    });
+  });
+  row.querySelector('.cu-name').addEventListener('input', refreshCustomUnitsUI);
+  row.querySelector('.cu-factor').addEventListener('input', refreshCustomUnitsUI);
+  row.querySelector('.cu-remove').addEventListener('click', ()=>{ row.remove(); refreshCustomUnitsUI(); });
+
   document.getElementById('ingredient-custom-units').appendChild(row);
+  refreshCustomUnitsUI();
 }
-document.getElementById('add-custom-unit-btn').addEventListener('click', ()=> {
-  addCustomUnitRow(undefined, currentUnitLabelForModal());
-});
+document.getElementById('add-custom-unit-btn').addEventListener('click', ()=> addCustomUnitRow());
 
 document.getElementById('ingredient-packaged').addEventListener('change', (e)=>{
   document.getElementById('ingredient-prices').classList.toggle('packaged', e.target.checked);
@@ -1154,16 +1251,18 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
 
   const customUnits = Array.from(document.querySelectorAll('#ingredient-custom-units .cu-row')).map(row => ({
     name: row.querySelector('.cu-name').value.trim(),
-    perIngredientUnit: Number(row.querySelector('.cu-equals').value) || 0
-  })).filter(cu => cu.name && cu.perIngredientUnit > 0);
+    direction: row.dataset.direction === 'larger' ? 'larger' : 'smaller',
+    factor: Number(row.querySelector('.cu-factor').value) || 0
+  })).filter(cu => cu.name && cu.factor > 0);
 
   const prices = {};
   document.querySelectorAll('#ingredient-prices .price-row').forEach(row => {
     const store = row.dataset.store;
     const priceVal = row.querySelector('.price-input').value;
     const pkgVal = row.querySelector('.package-size-input').value;
+    const unitVal = row.querySelector('.price-unit-select').value; // '' = the ingredient's own unit
     if (priceVal !== ''){
-      prices[store] = { price: Number(priceVal), packageSize: pkgVal !== '' ? Number(pkgVal) : 0 };
+      prices[store] = { price: Number(priceVal), packageSize: pkgVal !== '' ? Number(pkgVal) : 0, unit: unitVal || unit };
     }
   });
 
