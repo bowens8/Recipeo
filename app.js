@@ -489,15 +489,40 @@ function renderStoreChecks(){
   });
 }
 
-// Cheapest available price for an ingredient among currently-enabled stores.
-// Returns {price, store} or null if no enabled store has a price for it.
-function cheapestPrice(ing){
+// Reads a store's price entry for an ingredient in a format-agnostic way — handles
+// both the new {price, packageSize} shape and legacy plain-number prices.
+function priceEntryFor(ing, store){
+  const raw = ing.prices ? ing.prices[store] : null;
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'number') return { price: raw, packageSize: 0 };
+  const price = Number(raw.price);
+  if (!price || price <= 0) return null;
+  return { price, packageSize: Number(raw.packageSize) || 0 };
+}
+
+// Cost of buying enough of this ingredient at one store to cover neededQty (in the
+// ingredient's own unit). For packaged items this rounds UP to whole packages.
+// Returns {cost, store, packages, packageSize, boughtQty} or null if this store can't
+// price it (no price entered, or packaged with no package size entered).
+function storeCostFor(ing, store, neededQty){
+  const entry = priceEntryFor(ing, store);
+  if (!entry) return null;
+  if (ing.packaged){
+    if (!entry.packageSize || entry.packageSize <= 0) return null;
+    const packages = Math.max(1, Math.ceil(neededQty / entry.packageSize));
+    return { cost: packages * entry.price, store, packages, packageSize: entry.packageSize, boughtQty: packages * entry.packageSize };
+  }
+  return { cost: neededQty * entry.price, store, packages: null, packageSize: 0, boughtQty: neededQty };
+}
+
+// Cheapest option among currently-enabled stores for the quantity actually needed.
+function cheapestOption(ing, neededQty){
   let best = null;
   STORES.forEach(store => {
     if (!state.storeSettings[store]) return;
-    const p = ing.prices ? Number(ing.prices[store]) : NaN;
-    if (!p || p <= 0 || isNaN(p)) return;
-    if (best === null || p < best.price){ best = { price: p, store }; }
+    const opt = storeCostFor(ing, store, neededQty);
+    if (!opt) return;
+    if (best === null || opt.cost < best.cost) best = opt;
   });
   return best;
 }
@@ -558,22 +583,32 @@ function renderShoppingList(){
     const ing = state.ingredients[id];
     if (!ing) return '';
     const category = unitCategory(ing.unit);
-    const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
+    const neededQtyInIngUnit = baseQty / (toBaseUnit(1, ing.unit) || 1);
 
-    const best = cheapestPrice(ing); // price is entered per ing.unit
-    let priceHtml;
+    const best = cheapestOption(ing, neededQtyInIngUnit);
+    let priceHtml, amountHtml, pantryQty;
+
     if (best){
-      const pricePerBase = best.price / (toBaseUnit(1, ing.unit) || 1);
-      const cost = pricePerBase * baseQty;
-      grandTotal += cost;
-      storeSubtotals[best.store] = (storeSubtotals[best.store]||0) + cost;
-      priceHtml = `<span class="s-price">$${cost.toFixed(2)} <span style="font-weight:400;">at ${escapeHtml(best.store)}</span></span>`;
+      grandTotal += best.cost;
+      storeSubtotals[best.store] = (storeSubtotals[best.store]||0) + best.cost;
+      priceHtml = `<span class="s-price">$${best.cost.toFixed(2)} <span style="font-weight:400;">at ${escapeHtml(best.store)}</span></span>`;
+      if (best.packages !== null){
+        // packaged item: show the whole-package purchase, not the raw fractional need
+        const pkgWord = best.packages === 1 ? 'package' : 'packages';
+        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${UNIT_LABEL[ing.unit]||ing.unit} each)`;
+        pantryQty = best.boughtQty; // credit the full purchased amount, incl. rounding leftover
+      } else {
+        const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
+        amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
+        pantryQty = neededQtyInIngUnit;
+      }
     } else {
       missingPriceCount++;
-      priceHtml = `<span class="s-noprice">no price set</span>`;
+      priceHtml = `<span class="s-noprice">no price set${ing.packaged ? ' / no package size' : ''}</span>`;
+      const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
+      amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
+      pantryQty = neededQtyInIngUnit;
     }
-    // pantry credit amount, converted back into the ingredient's own reference unit
-    const pantryQty = baseQty / (toBaseUnit(1, ing.unit) || 1);
 
     return `<label class="shop-item" data-ing="${id}">
       <input type="checkbox" class="shop-check" data-ing="${id}" data-pantry-qty="${pantryQty}" />
@@ -581,7 +616,7 @@ function renderShoppingList(){
       <span class="s-name">${escapeHtml(ing.name)}</span>
       <span class="s-price-block">
         ${priceHtml}
-        <span class="s-amount">${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}</span>
+        <span class="s-amount">${amountHtml}</span>
       </span>
     </label>`;
   }).join('');
@@ -933,7 +968,7 @@ const ingredientPhotoImg = document.getElementById('ingredient-photo-img');
 
 function openIngredientModal(ingId){
   state.editing.ingredientId = ingId;
-  const ing = ingId ? state.ingredients[ingId] : { emoji:'🥕', name:'', unit:'g', calories:'', prices:{}, photo:null };
+  const ing = ingId ? state.ingredients[ingId] : { emoji:'🥕', name:'', unit:'g', calories:'', prices:{}, photo:null, packaged:false };
   document.getElementById('ingredient-modal-title').textContent = ingId ? 'Edit ingredient' : 'New ingredient';
   document.getElementById('ingredient-emoji').value = ing.emoji || '🥕';
   document.getElementById('ingredient-name').value = ing.name || '';
@@ -946,16 +981,28 @@ function openIngredientModal(ingId){
   setIngredientPhotoPreview(state.editing.ingredientPhoto);
 
   const priceContainer = document.getElementById('ingredient-prices');
+  const packagedCheckbox = document.getElementById('ingredient-packaged');
+  packagedCheckbox.checked = !!ing.packaged;
+  priceContainer.classList.toggle('packaged', !!ing.packaged);
+
   const prices = ing.prices || {};
-  priceContainer.innerHTML = STORES.map(store => `
+  priceContainer.innerHTML = STORES.map(store => {
+    const entry = priceEntryFor(ing, store) || { price:'', packageSize:'' };
+    return `
     <div class="price-row" data-store="${store}">
       <span>${store}</span>
-      <input type="number" class="price-input" min="0" step="0.01" placeholder="e.g. 1.29" value="${prices[store] ?? ''}" />
-    </div>`).join('');
+      <input type="number" class="price-input" min="0" step="0.01" placeholder="price $" value="${entry.price || ''}" />
+      <input type="number" class="package-size-input" min="0" step="any" placeholder="pkg size (${UNIT_LABEL[ing.unit]||ing.unit})" value="${entry.packageSize || ''}" />
+    </div>`;
+  }).join('');
 
   document.getElementById('delete-ingredient-btn').classList.toggle('hidden', !ingId);
   openModal('ingredient-modal');
 }
+
+document.getElementById('ingredient-packaged').addEventListener('change', (e)=>{
+  document.getElementById('ingredient-prices').classList.toggle('packaged', e.target.checked);
+});
 
 function setIngredientPhotoPreview(dataUrl){
   if (dataUrl){
@@ -990,8 +1037,11 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
   const prices = {};
   document.querySelectorAll('#ingredient-prices .price-row').forEach(row => {
     const store = row.dataset.store;
-    const val = row.querySelector('.price-input').value;
-    if (val !== '') prices[store] = Number(val);
+    const priceVal = row.querySelector('.price-input').value;
+    const pkgVal = row.querySelector('.package-size-input').value;
+    if (priceVal !== ''){
+      prices[store] = { price: Number(priceVal), packageSize: pkgVal !== '' ? Number(pkgVal) : 0 };
+    }
   });
 
   const data = {
@@ -1001,6 +1051,7 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     unit: document.getElementById('ingredient-unit').value,
     calories: Number(document.getElementById('ingredient-calories').value)||0,
     gramsPerCup: Number(document.getElementById('ingredient-density').value)||0,
+    packaged: document.getElementById('ingredient-packaged').checked,
     prices
   };
   if (state.editing.ingredientId){
