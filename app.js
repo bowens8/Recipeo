@@ -1100,21 +1100,36 @@ function renderRecipes(){
       <div class="rc-servings">makes ${r.baseServings} servings</div>
       <div class="rc-ingredients">${badges}</div>
       <div class="rc-cal">${cal>0? cal+' kcal / serving' : ''}</div>
-      <button type="button" class="btn ${cookBtnClass}" data-id="${id}">${cookBtnLabel}</button>
+      <div class="rc-actions">
+        <button type="button" class="btn btn-ghost rc-overview-btn" data-id="${id}">📄 Overview</button>
+        <button type="button" class="btn ${cookBtnClass}" data-id="${id}">${cookBtnLabel}</button>
+      </div>
     </div>`;
   }).join('');
   container.querySelectorAll('.recipe-card').forEach(card=>{
     card.addEventListener('click', ()=> openRecipeModal(card.dataset.id));
   });
+  container.querySelectorAll('.rc-overview-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      try{ openRecipeOverview(btn.dataset.id); }
+      catch(err){ console.error('Recipe overview failed:', err); toast("Couldn't open the overview — see console for details"); }
+    });
+  });
   container.querySelectorAll('.rc-cook-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
-      const recipeId = btn.dataset.id;
-      const missing = missingIngredientsForRecipe(state.recipes[recipeId]);
-      if (missing.length === 0){
-        openCookMode(recipeId);
-      } else {
-        openMissingIngredientsModal(recipeId, missing);
+      try{
+        const recipeId = btn.dataset.id;
+        const missing = missingIngredientsForRecipe(state.recipes[recipeId]);
+        if (missing.length === 0){
+          openCookMode(recipeId);
+        } else {
+          openMissingIngredientsModal(recipeId, missing);
+        }
+      } catch(err){
+        console.error('Cook button failed:', err);
+        toast("Couldn't open that — see console for details");
       }
     });
   });
@@ -1136,9 +1151,15 @@ function openMissingIngredientsModal(recipeId, missing){
 }
 document.getElementById('cook-confirm-cancel-btn').addEventListener('click', closeModals);
 document.getElementById('cook-confirm-anyway-btn').addEventListener('click', ()=>{
-  const recipeId = state.editing.pendingCookRecipeId;
-  closeModals();
-  if (recipeId) openCookMode(recipeId);
+  try{
+    const recipeId = state.editing.pendingCookRecipeId;
+    closeModals();
+    if (recipeId) openCookMode(recipeId);
+    else toast("Couldn't tell which recipe — try clicking Cook again");
+  } catch(err){
+    console.error('"Cook anyway" failed:', err);
+    toast("Couldn't open Cook Mode — see console for details");
+  }
 });
 
 /* ============================================================
@@ -1186,6 +1207,49 @@ function openCookMode(recipeId){
 document.getElementById('cook-close-btn').addEventListener('click', ()=>{
   document.getElementById('cook-overlay').classList.add('hidden');
 });
+
+/* ============================================================
+   RECIPE OVERVIEW — simple single-screen read view (no checklists, no cards)
+   ============================================================ */
+function openRecipeOverview(recipeId){
+  const r = state.recipes[recipeId];
+  if (!r) return;
+
+  document.getElementById('overview-recipe-title').textContent = r.name;
+  document.getElementById('overview-servings').textContent = `makes ${r.baseServings} servings`;
+
+  const coverImg = document.getElementById('overview-cover-img');
+  if (r.coverPhoto){
+    coverImg.src = r.coverPhoto;
+    coverImg.classList.remove('hidden');
+  } else {
+    coverImg.classList.add('hidden');
+    coverImg.src = '';
+  }
+
+  const ingList = document.getElementById('overview-ingredient-list');
+  const ingRows = (r.ingredients||[]).map(ri => {
+    const ing = state.ingredients[ri.ingredientId];
+    if (!ing) return '';
+    const unit = ri.unit || ing.unit;
+    return `<div class="cook-ing-item">
+      <span class="s-emoji">${ingredientIconHtml(ing)}</span>
+      <span class="cook-ing-name">${escapeHtml(ing.name)}</span>
+      <span class="cook-ing-qty">${formatQty(Number(ri.qty)||0)} ${UNIT_LABEL[unit]||unit}</span>
+    </div>`;
+  }).join('');
+  ingList.innerHTML = ingRows || '<p class="shop-empty">No ingredients listed for this recipe.</p>';
+
+  const stepsList = document.getElementById('overview-steps-list');
+  const steps = r.steps || [];
+  stepsList.innerHTML = steps.length ? steps.map(s => {
+    const text = typeof s === 'string' ? s : (s.text || '');
+    const photo = (s && typeof s === 'object') ? s.photo : null;
+    return `<li>${escapeHtml(text)}${photo ? `<img src="${photo}" alt="" />` : ''}</li>`;
+  }).join('') : '<li class="shop-empty" style="list-style:none;margin-left:-22px;">No steps added for this recipe yet.</li>';
+
+  openModal('recipe-overview-modal');
+}
 
 /* ============================================================
    RECIPE MODAL
