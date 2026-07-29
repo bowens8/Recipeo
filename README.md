@@ -68,20 +68,33 @@ NOT work — Firebase's auth/module setup requires an http(s) origin.
 That's it — visit your GitHub Pages URL, create an account (email/password, stored in
 your own Firebase project), and start adding ingredients, recipes, and a week of meals.
 
-## Custom units (e.g. cloves → bulbs)
+## Custom units (e.g. cloves ↔ bulbs)
 
 Some ingredients don't fit g/kg/ml/l/cup/tbsp/tsp/oz/lb/each at all — garlic bulbs, bunches
 of scallions, cans of something, whatever. On an ingredient's Unit dropdown, pick **Custom
-unit…** and name it (e.g. "bulb") — that becomes this ingredient's own unit, used for its
-calories and price.
+unit…** and name it (e.g. "clove") — that becomes this ingredient's own unit, used as the
+reference for its calories.
 
-Underneath that, **Custom sub-units** lets you define smaller units recipes might use
-instead — e.g. add "clove" and set it to equal 10 per 1 bulb. Recipes can then pick
-"clove" directly from that ingredient's unit dropdown, and the shopping list converts and
-combines cloves from every recipe into whole bulbs automatically, priced per bulb —
-rounding up the same way packaged items do (see below) if you also mark it as packaged.
-A custom unit's sub-units are only ever visible/usable on that specific ingredient — they
-don't leak into any other ingredient's unit list.
+Underneath that, **Custom units** lets you define other units recipes might use for this
+ingredient, in either direction:
+- **smaller** — e.g. "pinch", where several of them make up 1 of the ingredient's own unit
+- **larger** — e.g. "bulb", where 1 of them is worth several of the ingredient's own unit
+  (say, 10 cloves)
+
+Recipes can then pick any of these units directly from that ingredient's unit dropdown,
+and the shopping list converts and combines everything from every recipe automatically.
+
+**Pricing in the larger unit:** once you've defined at least one "larger" custom unit,
+every store's price row in that ingredient's Pricing section grows an extra dropdown so
+you can price it per that larger unit instead of per the base unit — e.g. price Garlic
+per bulb ($0.99/bulb at Kroger) even though the base unit is clove and recipes call for
+cloves. Combine this with "Sold in fixed-size packages" and a package size of 1, and the
+shopping list will total up all the cloves needed across your recipes, convert to bulbs,
+round up to whole bulbs, and price it correctly — with any leftover cloves from rounding
+up credited straight to your pantry once you check it off while shopping.
+
+A given ingredient's custom units are only ever visible/usable on that specific
+ingredient — they don't leak into any other ingredient's unit list.
 
 ## Mixed units in recipes (cups, tsp, oz, etc.) — combined automatically
 
