@@ -37,6 +37,16 @@ In the Firebase console: **Firestore Database → Rules**, replace the contents 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Ingredients and Recipes are shared: any signed-in user can read and write them —
+    // that's the whole point, so everyone using this planner shares one library.
+    match /shared_ingredients/{ingredientId} {
+      allow read, write: if request.auth != null;
+    }
+    match /shared_recipes/{recipeId} {
+      allow read, write: if request.auth != null;
+    }
+    // Everything else (pantry, week plan, personal store-price toggles) stays private
+    // to each account.
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
@@ -44,8 +54,10 @@ service cloud.firestore {
 }
 ```
 
-Click **Publish**. This means each signed-in user can only ever read or write their own
-`users/{their-uid}/...` data — nobody else's.
+Click **Publish**. Ingredients and Recipes are now shared — anyone with an account on
+this planner can see and edit the same library. Everything under `users/{their-uid}/...`
+(pantry, week plan, store-price preferences) stays private to that one account, same as
+before.
 
 ## 4. Run it locally (optional)
 
@@ -110,11 +122,25 @@ in actual recipes that week.
 
 ## Cook Mode
 
-Click **🍳 Cook this** on any recipe card for a full-screen, distraction-free view for
-actually cooking: a checklist of everything to gather (tap to check off as you pull
-things out), followed by the recipe's steps as large, easy-to-read cards you scroll
-through — including step photos if you added any. Nothing here is saved; it's just a
-clean read-only view for while you're at the stove.
+Every recipe card has two buttons: **📄 Overview** and **🍳 Cook this**.
+
+**Overview** is a simple single-screen read view — ingredients and steps listed plainly,
+like reading a recipe off a page, no checklists or interaction. Good for a quick glance
+or reading through before you start.
+
+**Cook this** is the full-screen, distraction-free mode for actually cooking: a
+checklist of everything to gather (tap to check off as you pull things out), followed by
+the recipe's steps as large, easy-to-read cards you scroll through — including step
+photos if you added any. Nothing in either view is saved; they're just read-only ways to
+look at a recipe.
+
+The Cook button checks your Pantry first. If everything the recipe needs (at its base
+servings) is already in stock, it's the normal button. If you're short on anything, it
+grays out and relabels itself "⚠️ Missing N items" — clicking it still works, but shows a
+popup listing exactly what's short and by how much, with a choice to **Cancel** or **Cook
+anyway** (useful if you're planning to grab something on the way home, or just don't keep
+your pantry perfectly up to date). "Cook anyway" always opens Cook Mode regardless of
+what's missing — the pantry check is just a heads-up, never a hard block.
 
 ## Custom units (e.g. cloves ↔ bulbs)
 
@@ -220,25 +246,49 @@ already knows about it. Leave the box unchecked for anything bought as an exact 
 (deli meat sliced to order, produce sold by weight, etc.) — those price per unit as
 before, with no rounding.
 
+## Multiple people, one shared library
+
+Anyone can create their own account (Sign in screen → Create account) — this is meant
+for a household, roommates, or a family to share.
+
+- **Shared with everyone who has an account:** Ingredients and Recipes. Anyone adds or
+  edits an ingredient or recipe, everyone sees it. One communal library instead of each
+  person rebuilding their own.
+- **Private to each account:** Pantry, Week Plan (and which stores you shop from). What
+  you have on hand and what you're planning to eat is yours — nobody else's account
+  affects it, and you don't see anyone else's.
+
+If you already had recipes/ingredients saved from before this existed, they migrate into
+the shared library automatically the first time you sign in after updating — no action
+needed, and nothing is deleted in the process (see `## 3. Lock down Firestore` above for
+the security rules that make the sharing possible).
+
 ## How the data model works
 
 - **Ingredients** are the master list: emoji, name, a unit (g, ml, each, etc.), and
-  calories *per one unit*. Everything else (recipes, pantry, shopping list) references
-  this list, so define an ingredient once and reuse it everywhere.
+  calories *per one unit* — shared across every account. Everything else (recipes,
+  pantry, shopping list) references this list, so define an ingredient once and reuse it
+  everywhere, for everyone.
 - **Recipes** store a base serving size and a list of `{ingredient, quantity}` pairs plus
-  numbered steps. Calories per serving are computed automatically from the ingredients.
-- **Pantry** is just "how much of each ingredient you currently have" — it's subtracted
-  from the shopping list, not tied to any specific week.
-- **Week Plan**: each day gets meals you add as either "Cook something" (pick a recipe,
-  how many servings to batch-cook, how many you're eating that day — the rest becomes
-  available as leftovers) or "Eat leftovers" (pick from any earlier cooked batch that
-  still has servings remaining).
-- **Shopping List** looks at every "Cook" meal scheduled in the visible week, scales each
-  recipe's ingredients to the batch size, combines duplicate ingredients across recipes,
-  and subtracts whatever's already in your pantry.
+  numbered steps — also shared. Calories per serving are computed automatically from the
+  ingredients.
+- **Pantry** is just "how much of each ingredient you currently have" — private per
+  account, subtracted from that account's shopping list, not tied to any specific week.
+- **Week Plan**: private per account. Each day gets meals you add as either "Cook
+  something" (pick a recipe, how many servings to batch-cook, how many you're eating
+  that day — the rest becomes available as leftovers), "Eat leftovers" (pick from any
+  earlier cooked batch that still has servings remaining), or "Quick item" (a bare
+  ingredient like coffee or cereal, no recipe needed).
+- **Shopping List** looks at every "Cook" meal and Quick item scheduled in that
+  account's visible week, scales each recipe's ingredients to the batch size, combines
+  duplicate ingredients across recipes, and subtracts whatever's already in that
+  account's pantry.
 
 ## Notes / limitations
 
-- Quantities are simple numbers in one unit per ingredient — there's no automatic unit
-  conversion (e.g. cups → grams), so keep a given ingredient's recipes consistent.
-- Everything is scoped to one signed-in account; there's no multi-user sharing/collaboration.
+- Quantities are simple numbers in one unit per ingredient (with the custom-unit system
+  bridging different units where you set it up) — see the Custom units and Mixed units
+  sections above.
+- Anyone with an account can edit or delete any shared ingredient or recipe — there's no
+  per-item ownership or edit history, so it works best for a small trusted group (a
+  household) rather than a large public group.
