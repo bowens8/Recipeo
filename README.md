@@ -1,4 +1,4 @@
-# Recipeo — weekly meal planner
+# RecipeMe — weekly meal planner
 
 A small static web app: recipes with ingredients & steps, a pantry, a weekly meal
 calendar (with leftovers tracking), an auto-generated shopping list, and per-ingredient
@@ -6,7 +6,7 @@ calorie tracking. Runs entirely client-side, data stored in Firebase.
 
 ## 1. Create a Firebase project
 
-1. Go to https://console.firebase.google.com → **Add project** → name it anything (e.g. `recipeo-app`) → finish the wizard.
+1. Go to https://console.firebase.google.com → **Add project** → name it anything (e.g. `recipeme-app`) → finish the wizard.
 2. In the left sidebar: **Build → Authentication → Get started**. On the "Sign-in method" tab, enable **Email/Password**.
 3. In the left sidebar: **Build → Firestore Database → Create database**. Start in **production mode**, pick any region.
 4. Go to **Project settings** (gear icon) → scroll to **Your apps** → click the **</>** (web) icon → register an app (nickname doesn't matter, no hosting needed) → copy the `firebaseConfig` object it shows you.
@@ -90,7 +90,7 @@ reverts rather than leaving a half-typed, invalid selection.
 
 ## Faster ingredient entry: autofill & bulk add
 
-Recipeo ships with a built-in database of ~100 common pantry staples, produce, proteins,
+RecipeMe ships with a built-in database of ~100 common pantry staples, produce, proteins,
 dairy, spices, and condiments — entirely local, no external API or key involved. Two ways
 it saves you typing:
 
@@ -99,7 +99,7 @@ it saves you typing:
   emoji, unit, and calories for you. Only appears for brand-new ingredients, never
   overwrites an existing one, and you can always adjust anything after applying it.
 - **Quick add multiple** (Ingredients tab) — paste a list of names, one per line or
-  comma-separated, and hit Add. Anything Recipeo recognizes gets fully autofilled;
+  comma-separated, and hit Add. Anything RecipeMe recognizes gets fully autofilled;
   anything it doesn't still gets created (with a shopping-cart emoji and 0 calories) so
   you can fill in the rest later. Names that already exist in your library are skipped
   automatically. Handy for seeding your whole pantry at once instead of one ingredient
