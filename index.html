@@ -194,13 +194,24 @@
             <option value="each">each / whole</option>
             <option value="oz">oz</option>
             <option value="lb">lb</option>
+            <option value="__custom__">Custom unit…</option>
           </select>
         </label>
         <label>Calories per unit
           <input type="number" id="ingredient-calories" min="0" step="1" placeholder="e.g. 41 per 100g → enter per-unit value" />
         </label>
       </div>
+      <div id="ingredient-custom-unit-wrap" class="hidden">
+        <label>Custom unit name
+          <input type="text" id="ingredient-custom-unit-name" placeholder="e.g. bulb" />
+        </label>
+      </div>
       <p class="hint">Enter calories for exactly one unit as selected above (e.g. calories per 1 gram, or per 1 each). The unit is just a reference for calories — on the shopping list, amounts are automatically totaled and shown in whichever size (g/kg, tsp/tbsp/cup/L, etc.) makes the most sense, so you never need to do the math yourself.</p>
+
+      <h4>Custom sub-units <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional)</span></h4>
+      <p class="hint" style="margin-top:-4px;">If recipes sometimes measure this ingredient in a smaller unit than the one above — like cloves instead of bulbs — add it here. Recipes can then use that unit directly, and the shopping list will convert, combine, and round up to whole units automatically.</p>
+      <div id="ingredient-custom-units" class="custom-units-list"></div>
+      <button type="button" id="add-custom-unit-btn" class="btn btn-ghost btn-small">+ Add custom unit</button>
 
       <label>Grams per cup <span style="font-weight:400;color:var(--ink-soft)">(optional — only needed for a specific case, see below)</span>
         <input type="number" id="ingredient-density" min="0" step="0.1" placeholder="e.g. 240 for honey, 120 for flour" />
