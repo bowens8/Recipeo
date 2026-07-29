@@ -234,7 +234,7 @@ const backdrop = document.getElementById('modal-backdrop');
 
 function openModal(id){
   backdrop.classList.remove('hidden');
-  document.querySelectorAll('.modal').forEach(m=>m.classList.add('hidden'));
+  backdrop.querySelectorAll('.modal').forEach(m=>m.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 }
 function closeModals(){
