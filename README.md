@@ -68,6 +68,54 @@ NOT work — Firebase's auth/module setup requires an http(s) origin.
 That's it — visit your GitHub Pages URL, create an account (email/password, stored in
 your own Firebase project), and start adding ingredients, recipes, and a week of meals.
 
+## Searchable ingredient picker
+
+Everywhere you pick an ingredient from your library — adding an ingredient to a recipe,
+or picking one for a Quick item — it's a type-to-search box instead of a long dropdown.
+Click it to browse everything, or start typing to filter by name. Selecting one fills in
+its icon and name; if you type something and click away without picking a result, it
+reverts rather than leaving a half-typed, invalid selection.
+
+## Faster ingredient entry: autofill & bulk add
+
+Recipeo ships with a built-in database of ~100 common pantry staples, produce, proteins,
+dairy, spices, and condiments — entirely local, no external API or key involved. Two ways
+it saves you typing:
+
+- **Autofill while creating an ingredient** — start typing a name that matches (e.g.
+  "chicken breast", "garlic", "olive oil") and a suggestion banner offers to fill in the
+  emoji, unit, and calories for you. Only appears for brand-new ingredients, never
+  overwrites an existing one, and you can always adjust anything after applying it.
+- **Quick add multiple** (Ingredients tab) — paste a list of names, one per line or
+  comma-separated, and hit Add. Anything Recipeo recognizes gets fully autofilled;
+  anything it doesn't still gets created (with a shopping-cart emoji and 0 calories) so
+  you can fill in the rest later. Names that already exist in your library are skipped
+  automatically. Handy for seeding your whole pantry at once instead of one ingredient
+  at a time.
+
+Both features use the same built-in list — if you paste "bell pepper, cheddar cheese,
+lemon" you'll get all three fully filled in immediately.
+
+## Meal types, and quick (non-recipe) items
+
+Every meal you add to the Week Plan now gets a type — Breakfast 🍳, Lunch 🥪, Dinner 🍽️,
+or Snack 🍿 — shown as an icon right on its chip so a day's plan is readable at a glance.
+
+For things that aren't really a "recipe" — cereal, coffee, a piece of fruit — use the
+**Quick item** option (alongside "Cook something" and "Eat leftovers") when adding a
+meal. Pick an ingredient straight from your Ingredients tab and how much, no recipe
+needed. Quick items count toward that day's calories and toward the shopping list
+exactly like a recipe ingredient would, combining with any of the same ingredient used
+in actual recipes that week.
+
+## Cook Mode
+
+Click **🍳 Cook this** on any recipe card for a full-screen, distraction-free view for
+actually cooking: a checklist of everything to gather (tap to check off as you pull
+things out), followed by the recipe's steps as large, easy-to-read cards you scroll
+through — including step photos if you added any. Nothing here is saved; it's just a
+clean read-only view for while you're at the stove.
+
 ## Custom units (e.g. cloves ↔ bulbs)
 
 Some ingredients don't fit g/kg/ml/l/cup/tbsp/tsp/oz/lb/each at all — garlic bulbs, bunches
@@ -126,10 +174,13 @@ measurement either way.
 
 Ingredients can use a small uploaded photo instead of an emoji (Ingredients tab → Or
 upload a photo), and recipes can have a cover photo plus a photo per step (Recipes tab →
-open/create a recipe). Photos are automatically resized and compressed in your browser
-before saving, and stored directly alongside the rest of your data in Firestore — there's
-no separate file-storage service to set up (Firebase's file storage product now requires
-a paid billing plan; keeping images inline in Firestore avoids that entirely on the free
+open/create a recipe) — each with a crop-and-zoom step before saving. The ingredient
+photo crops to a square (it's used as a small icon), but recipe cover and step photos
+can be cropped to **any rectangle** — drag the corner handles freely, there's no locked
+aspect ratio. Photos are automatically resized and compressed in your browser before
+saving, and stored directly alongside the rest of your data in Firestore — there's no
+separate file-storage service to set up (Firebase's file storage product now requires a
+paid billing plan; keeping images inline in Firestore avoids that entirely on the free
 tier). Because of this, keep photos reasonable: a recipe with a cover photo and a photo
 on every single step could approach Firestore's 1&nbsp;MB per-document limit if you have
 many steps — if you ever hit that, drop a couple of step photos.
@@ -161,11 +212,13 @@ pasta, a block of cheese, a bag of flour — anything you can't buy in an exact 
 enter each store's **package size** alongside its price (in that ingredient's unit — e.g.
 Kroger: $2.50, 8 oz). The shopping list then rounds up to the number of whole packages
 you'd actually need to buy and prices it accordingly (2 packages of an 8&nbsp;oz block to
-cover 12&nbsp;oz needed, not a fractional 1.5). Whatever's left over from rounding up gets
-credited straight to your pantry the moment you check that item off in Shopping Mode, so
-next week's shopping list already knows about it. Leave the box unchecked for anything
-bought as an exact amount (deli meat sliced to order, produce sold by weight, etc.) —
-those price per unit as before, with no rounding.
+cover 12&nbsp;oz needed, not a fractional 1.5) — and shows a small "need 12 oz" note right
+underneath, so you can always see the actual amount a recipe calls for alongside the
+rounded-up purchase. Whatever's left over from rounding up gets credited straight to your
+pantry the moment you check that item off in Shopping Mode, so next week's shopping list
+already knows about it. Leave the box unchecked for anything bought as an exact amount
+(deli meat sliced to order, produce sold by weight, etc.) — those price per unit as
+before, with no rounding.
 
 ## How the data model works
 
