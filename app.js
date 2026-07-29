@@ -1203,9 +1203,16 @@ async function openCropper(rawDataUrl, aspectRatio, outputMaxDim, quality, onCon
 
 document.getElementById('crop-confirm-btn').addEventListener('click', ()=>{
   if (!cropperInstance || !cropConfirmHandler) return;
-  const { onConfirm, outputMaxDim, quality } = cropConfirmHandler;
-  const canvas = cropperInstance.getCroppedCanvas({ width: outputMaxDim, imageSmoothingQuality: 'high' });
-  onConfirm(canvas.toDataURL('image/jpeg', quality));
-  closeCropOverlay();
+  try{
+    const { onConfirm, outputMaxDim, quality } = cropConfirmHandler;
+    const canvas = cropperInstance.getCroppedCanvas({ width: outputMaxDim, imageSmoothingQuality: 'high' });
+    if (!canvas) throw new Error('getCroppedCanvas returned nothing');
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    onConfirm(dataUrl);
+    closeCropOverlay();
+  } catch(err){
+    console.error('Crop confirm failed:', err);
+    toast("Couldn't save that crop — see console for details");
+  }
 });
 document.getElementById('crop-cancel-btn').addEventListener('click', closeCropOverlay);
