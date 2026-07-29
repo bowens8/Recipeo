@@ -277,6 +277,7 @@ input[type="file"]{
 .shop-item .s-price-block{text-align:right;}
 .shop-item .s-price{font-family:var(--font-mono); font-size:.92rem; font-weight:700; color:var(--brick); display:block;}
 .shop-item .s-amount{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-soft); display:block; margin-top:2px;}
+.shop-item .s-amount-large{font-size:1.05rem; font-weight:700; color:var(--ink); margin-top:0;}
 .shop-item .s-needed-note{display:block; font-size:.7rem; color:var(--sage-700); font-style:italic; margin-top:1px;}
 .shop-item .s-noprice{font-size:.72rem; color:var(--ink-soft); font-style:italic;}
 .shop-empty{color:var(--ink-soft); font-style:italic; padding:20px 0;}
