@@ -147,6 +147,8 @@ input[type="file"]{
 }
 .meal-chip:hover{border-color:var(--sage-500);}
 .meal-chip .chip-title{font-weight:700; display:flex; align-items:center; gap:5px;}
+.chip-ing-icon{display:inline-flex; width:16px; height:16px; border-radius:50%; overflow:hidden; flex-shrink:0; align-items:center; justify-content:center; font-size:.85rem;}
+.chip-ing-icon img{width:100%; height:100%; object-fit:cover;}
 .meal-chip .chip-meta{color:var(--ink-soft); font-size:.7rem; margin-top:2px;}
 .meal-chip.leftover{background:var(--mustard-soft); border-color:#e3c479;}
 .add-meal-btn{
@@ -175,6 +177,7 @@ input[type="file"]{
 }
 .ing-badge img{width:100%; height:100%; object-fit:cover;}
 .rc-cal{margin-top:10px; font-family:var(--font-mono); font-size:.72rem; color:var(--sage-700);}
+.rc-cook-btn{width:100%; margin-top:12px;}
 
 /* ============ Pantry ============ */
 .pantry-list{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px;}
@@ -254,32 +257,59 @@ input[type="file"]{
 .shop-item .s-price-block{text-align:right;}
 .shop-item .s-price{font-family:var(--font-mono); font-size:.92rem; font-weight:700; color:var(--brick); display:block;}
 .shop-item .s-amount{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-soft); display:block; margin-top:2px;}
+.shop-item .s-needed-note{display:block; font-size:.7rem; color:var(--sage-700); font-style:italic; margin-top:1px;}
 .shop-item .s-noprice{font-size:.72rem; color:var(--ink-soft); font-style:italic;}
 .shop-empty{color:var(--ink-soft); font-style:italic; padding:20px 0;}
 
 /* ingredient price grid inside modal */
 .ingredient-prices{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
-.price-row{display:grid; grid-template-columns:110px 1fr; align-items:center; gap:10px;}
-.ingredient-prices.packaged .price-row{grid-template-columns:110px 1fr 110px;}
+.price-row{display:grid; grid-template-columns:100px 1fr; align-items:center; gap:8px;}
+.ingredient-prices.packaged .price-row{grid-template-columns:100px 1fr 90px;}
+.ingredient-prices.has-larger-units .price-row{grid-template-columns:100px 1fr 100px;}
+.ingredient-prices.packaged.has-larger-units .price-row{grid-template-columns:100px 1fr 90px 100px;}
 .price-row span{font-size:.85rem; font-weight:600; color:var(--ink-soft);}
-.price-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono);}
+.price-row input, .price-row select{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono); font-size:.82rem;}
 .price-row .package-size-input{display:none;}
 .ingredient-prices.packaged .price-row .package-size-input{display:block;}
 .checkbox-inline{display:flex; align-items:center; gap:9px; font-size:.88rem; font-weight:600; color:var(--ink); margin-bottom:8px;}
 .checkbox-inline input{margin:0;}
 
+/* autofill suggestion */
+.autofill-suggestion{
+  display:flex; align-items:center; gap:10px; background:var(--mustard-soft); border:1.5px solid #e3c479;
+  border-radius:10px; padding:9px 12px; margin:-8px 0 14px; font-size:.83rem;
+}
+.autofill-suggestion span{flex:1; color:var(--ink);}
+.autofill-suggestion .icon-btn{width:26px; height:26px; font-size:.8rem; flex-shrink:0;}
+
+/* bulk add */
+#bulk-add-textarea{
+  display:block; width:100%; margin-top:6px; padding:10px 12px; border:1.5px solid var(--paper-line);
+  border-radius:9px; background:var(--paper); font-family:var(--font-mono); font-size:.88rem; line-height:1.5; resize:vertical;
+}
+
 /* custom units */
-.custom-units-list{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
-.cu-row{display:grid; grid-template-columns:1fr 20px 70px 1fr 28px; align-items:center; gap:8px;}
+.custom-units-list{display:flex; flex-direction:column; gap:10px; margin-bottom:6px;}
+.cu-row{display:flex; flex-direction:column; gap:8px; background:var(--sage-50); border:1.5px solid var(--paper-line); border-radius:10px; padding:10px 12px;}
+.cu-row-top{display:flex; align-items:center; gap:8px;}
+.cu-row-top .cu-name{flex:1; min-width:0;}
+.cu-row-bottom{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
 .cu-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono); font-size:.85rem;}
-.cu-row .cu-eq{text-align:center; color:var(--ink-soft); font-weight:700;}
-.cu-row .cu-suffix{font-size:.78rem; color:var(--ink-soft); white-space:nowrap;}
-.cu-remove{background:transparent; border:none; color:var(--danger); font-size:1.1rem;}
+.cu-row .cu-factor{width:72px; flex-shrink:0;}
+.cu-dir-toggle{display:flex; gap:4px; flex-shrink:0;}
+.cu-dir-btn{padding:6px 10px; border-radius:7px; border:1.5px solid var(--paper-line); background:var(--paper); font-size:.76rem; font-weight:700; color:var(--ink-soft); white-space:nowrap; flex-shrink:0;}
+.cu-dir-btn.active{background:var(--sage-500); border-color:var(--sage-500); color:#fff;}
+.cu-preview{font-size:.78rem; color:var(--sage-700); font-family:var(--font-mono); line-height:1.4;}
+.cu-remove{background:transparent; border:none; color:var(--danger); font-size:1.15rem; flex-shrink:0; padding:2px 4px; line-height:1;}
+
+/* per-store pricing unit selector (only relevant/shown when a "larger" custom unit exists) */
+.price-row .price-unit-select{display:none;}
+.ingredient-prices.has-larger-units .price-row .price-unit-select{display:block;}
 
 /* ============ Photos (ingredient / recipe / step) ============ */
 .photo-preview{display:flex; align-items:center; gap:12px; margin:-6px 0 14px;}
 .photo-preview img{width:60px; height:60px; object-fit:cover; border-radius:10px; border:1.5px solid var(--paper-line);}
-.photo-preview.cover-preview img{width:100%; max-width:100%; height:140px; border-radius:12px;}
+.photo-preview.cover-preview img{width:100%; max-width:100%; height:140px; border-radius:12px; object-fit:cover;}
 .photo-preview.cover-preview{flex-direction:column; align-items:stretch;}
 
 .rc-cover{width:100%; height:130px; object-fit:cover; border-radius:11px; margin-bottom:10px;}
@@ -287,6 +317,21 @@ input[type="file"]{
 .rs-photo-row{display:flex; align-items:center; gap:8px; margin-top:6px;}
 .rs-photo-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line);}
 .rs-photo-input{font-size:.76rem; max-width:200px;}
+
+/* ============ Searchable ingredient combo (recipe rows + quick-item picker) ============ */
+.ing-combo{position:relative;}
+.ing-combo-search{
+  display:block; width:100%; box-sizing:border-box; padding:7px 9px; font-size:.88rem;
+  border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:inherit;
+}
+.ing-combo-list{
+  position:absolute; top:100%; left:0; right:0; margin-top:4px; z-index:30;
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:9px;
+  max-height:220px; overflow-y:auto; box-shadow:var(--shadow); padding:4px;
+}
+.ing-combo-item{padding:8px 10px; font-size:.87rem; border-radius:6px; cursor:pointer;}
+.ing-combo-item:hover{background:var(--sage-100);}
+.ing-combo-empty{padding:8px 10px; font-size:.83rem; color:var(--ink-soft); font-style:italic;}
 
 /* ============ Recipe modal internals ============ */
 .recipe-ingredients{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
@@ -329,6 +374,36 @@ input[type="file"]{
   font-weight:700; font-size:.84rem; color:var(--ink-soft);
 }
 .toggle-btn.active{background:var(--sage-500); border-color:var(--sage-500); color:#fff;}
+
+/* ============ Cook Mode ============ */
+.cook-overlay{
+  position:fixed; inset:0; background:var(--sage-50); z-index:250;
+  display:flex; flex-direction:column; overflow-y:auto;
+}
+.cook-header{
+  position:sticky; top:0; z-index:2; background:var(--paper); border-bottom:1.5px solid var(--paper-line);
+  padding:14px 20px; display:flex; align-items:center; gap:14px;
+}
+.cook-header h2{flex:1; text-align:center; font-size:1.15rem;}
+.cook-servings-label{font-size:.78rem; color:var(--ink-soft); font-family:var(--font-mono); min-width:34px; text-align:right;}
+.cook-body{max-width:720px; width:100%; margin:0 auto; padding:22px 20px 60px; display:flex; flex-direction:column; gap:30px;}
+.cook-section h3{font-size:1.05rem; margin-bottom:12px;}
+.cook-ingredient-list{display:flex; flex-direction:column; gap:8px;}
+.cook-ing-item{
+  display:flex; align-items:center; gap:12px; background:var(--paper);
+  border:1.5px solid var(--paper-line); border-radius:11px; padding:12px 14px; cursor:pointer;
+}
+.cook-ing-item input[type="checkbox"]{width:20px; height:20px;}
+.cook-ing-item.checked{opacity:.45; text-decoration:line-through;}
+.cook-ing-name{flex:1; font-weight:600;}
+.cook-ing-qty{font-family:var(--font-mono); color:var(--brick); font-size:.9rem;}
+.cook-steps-list{display:flex; flex-direction:column; gap:16px;}
+.cook-step-card{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:16px; padding:18px 20px;
+}
+.cook-step-num{font-family:var(--font-mono); font-weight:700; color:var(--sage-700); font-size:.82rem; margin-bottom:8px;}
+.cook-step-photo{width:100%; max-height:320px; object-fit:cover; border-radius:12px; margin-bottom:12px;}
+.cook-step-text{font-size:1.12rem; line-height:1.55; color:var(--ink);}
 
 /* ============ Toast ============ */
 .toast{
