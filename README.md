@@ -80,6 +80,101 @@ NOT work — Firebase's auth/module setup requires an http(s) origin.
 That's it — visit your GitHub Pages URL, create an account (email/password, stored in
 your own Firebase project), and start adding ingredients, recipes, and a week of meals.
 
+## Import detailed ingredient data from text
+
+Click **📄 Import detailed data** on the Ingredients tab for a more precise format aimed
+at nutrition/pricing data sheets rather than casual entry — paste or upload one or more
+`INGREDIENT` blocks like this:
+
+```
+INGREDIENT
+name: Jasmine Rice
+UNIT_INFORMATION
+standard_unit: cup_cooked
+standard_unit_weight_g: 158
+calories_per_standard_unit: 205
+DENSITY_CONVERSION
+grams_per_cup_dry: 185
+grams_per_cup_cooked: 158
+PACKAGE_INFORMATION
+common_package_unit: bag
+units_per_package: 1
+package_weight_g: 2268
+PRICE_INFORMATION
+ALDI
+package_price: 4.99
+package_size_g: 2268
+KROGER
+package_price: 5.99
+package_size_g: 2268
+GIANT_EAGLE
+package_price: 6.49
+package_size_g: 2268
+```
+
+Paste as many `INGREDIENT` blocks as you like in one file — each is its own ingredient.
+This maps directly onto features already in the app, with no separate system underneath:
+
+- The ingredient's base unit becomes grams, and `calories_per_standard_unit ÷
+  standard_unit_weight_g` becomes its calories-per-gram.
+- Every `grams_per_X` line under `DENSITY_CONVERSION` becomes a **custom unit** — exactly
+  the same custom-unit system used for things like cloves/bulbs — so "cup_dry" and
+  "cup_cooked" both become real units you can pick when adding this ingredient to a
+  recipe, each converting to grams correctly on its own.
+- `PACKAGE_INFORMATION` turns on "sold in fixed-size packages" automatically, and each
+  store under `PRICE_INFORMATION` becomes that store's price + package size — store
+  names are matched case-insensitively (`GIANT_EAGLE` → Giant Eagle, etc.).
+
+You'll see a preview first — a name that matches an existing ingredient gets **updated**
+(its unit/calories/custom units/pricing get replaced with the imported values; its photo
+and emoji are left alone) rather than creating a duplicate, so re-importing an updated
+price sheet is safe to do anytime.
+
+## Import a recipe from text
+
+Don't have the text yet? Open **📄 Import from text** and expand "Don't have the text
+yet?" right in the modal — it has a ready-to-copy prompt you can hand to Claude along
+with a recipe URL, and paste back whatever it sends you. (The ingredient importer below
+has the same thing, for researching nutrition + store pricing from a URL or just a
+name.) Full explanation of why that's more reliable than in-app URL fetching is in
+`import-prompts.md` alongside these files, if you want the background.
+
+Click **📄 Import from text** on the Recipes tab to skip manual entry entirely — paste
+recipe text (or upload a `.txt` file) in this exact format and it builds the whole
+recipe for you:
+
+```
+TITLE
+Recipe Name
+SERVINGS
+4
+INGREDIENTS
+- 1 cup flour
+- 2 eggs
+PANTRY ITEMS
+- Salt
+- Pepper
+INSTRUCTIONS
+1. First step.
+2. Second step.
+```
+
+Section headers (`TITLE`, `SERVINGS`, `INGREDIENTS`, `PANTRY ITEMS`, `INSTRUCTIONS`) each
+go on their own line; ingredient lines start with `- `; steps are numbered. `PANTRY
+ITEMS` is optional and gets folded into the recipe's ingredient list right alongside
+`INGREDIENTS` — it's just a way of grouping the staples you probably already have
+separately from the main shopping items in your source text.
+
+It understands fractions ("1/4 cup"), decimals ("7.2 g"), and plain counts with no unit
+("2 scallions" → each). Lines with no amount at all (just "Salt", "Pepper") get a small
+placeholder amount using that ingredient's usual unit if it's a recognized common
+ingredient — editable afterward like anything else.
+
+You'll see a preview before anything is created — every ingredient name is matched
+against your existing library first; anything that doesn't already exist gets created
+automatically (autofilled from the same built-in database used for Quick Add, where it
+recognizes the name). Click **Import recipe** to confirm.
+
 ## Searchable ingredient picker
 
 Everywhere you pick an ingredient from your library — adding an ingredient to a recipe,
@@ -141,6 +236,34 @@ popup listing exactly what's short and by how much, with a choice to **Cancel** 
 anyway** (useful if you're planning to grab something on the way home, or just don't keep
 your pantry perfectly up to date). "Cook anyway" always opens Cook Mode regardless of
 what's missing — the pantry check is just a heads-up, never a hard block.
+
+At the bottom of Cook Mode, **✅ I cooked this — remove ingredients from pantry** subtracts
+that recipe's ingredients (at its base servings) from your Pantry in one tap, so you don't
+have to go update quantities by hand after every meal.
+
+## Spices
+
+A dedicated tab for a common case: spices you don't measure precisely week to week, and
+blends made by mixing several of them together.
+
+**Base spices** — mark any ingredient "This is a spice" (in its regular editor) and it
+shows up on the Spices tab with a simple **✅ Have it / 🛒 Need to buy** toggle instead of
+a quantity — spices don't run out the way produce does, so tracking an exact amount
+usually isn't worth the trouble.
+
+**Spice blends** — click **+ New spice blend** to define a mix (e.g. Taco Seasoning = 2
+tsp chili powder + 1 tsp cumin + 1 tsp paprika), picking the unit it's stored/used in
+(tsp, tbsp, cup, g, oz) and adding base spices with amounts. You'll see a live "makes
+about X total" preview as you go.
+
+A blend is really just a regular ingredient under the hood — which means it's
+automatically usable **anywhere** any other ingredient is: search for it directly in any
+recipe ("2 tbsp Taco Seasoning"), add it as a Quick item, track it in your pantry, and so
+on. The one thing that's special about it: wherever a recipe calls for some amount of a
+blend — Cook Mode, Recipe Overview, and the Shopping List — a **"Mix together:"** note
+appears underneath, showing exactly how much of each base spice that amount works out to,
+scaled proportionally. Need 2 tbsp of a blend that makes 1⅓ tbsp per batch? It'll show
+you 1.5× everything in the recipe automatically — no manual math.
 
 ## Custom units (e.g. cloves ↔ bulbs)
 
@@ -220,6 +343,12 @@ since the shopping list is always computed as "what recipes need minus what's in
 pantry," purchased items disappear from the list on their own once they're covered.
 Items flagged with a unit-mismatch warning (see above) aren't checkable this way — add
 them to your pantry manually on the Pantry tab instead.
+
+Each item gets a small **"add \_\_\_ to pantry"** field once you're in Shopping Mode,
+pre-filled with the suggested amount — but it's editable. If the store didn't have the
+package size you expected (their 12 oz block was actually a 16 oz one, say), just type
+the real number before checking it off; that's what actually gets credited to your
+pantry, not the original estimate.
 
 ## Store prices
 
