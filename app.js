@@ -2524,6 +2524,28 @@ function ingredientCreatedAtMillis(ing){
   return 0;
 }
 
+// Classifies how complete an ingredient's data is, for the status column on the
+// Ingredients tab: green = calories set AND priced at every enabled-in-app store;
+// yellow = calories (and everything else) set, just missing some/all store prices;
+// red = the core data itself (calories) is missing, same signal as the "needs data"
+// warning — this is the more serious gap since price alone isn't very useful without it.
+function ingredientCompletenessStatus(ing){
+  const missingCore = !!ing.needsReview || !(Number(ing.calories) > 0);
+  if (missingCore){
+    return { level:'red', glyph:'✕', label:'Missing core data — calories haven\'t been set' };
+  }
+  const missingStores = STORES.filter(s => {
+    const p = ing.prices ? ing.prices[s] : null;
+    if (!p || !(Number(p.price) > 0)) return true;
+    if (ing.packaged && !(Number(p.packageSize) > 0)) return true;
+    return false;
+  });
+  if (missingStores.length === 0){
+    return { level:'green', glyph:'✓', label:'Complete — calories and a price at every store' };
+  }
+  return { level:'yellow', glyph:'!', label:`Missing a price at: ${missingStores.join(', ')}` };
+}
+
 function renderIngredients(){
   const container = document.getElementById('ingredient-list');
   let entries = Object.entries(state.ingredients);
@@ -2549,11 +2571,13 @@ function renderIngredients(){
     const calSpan = ing.needsReview
       ? `<span class="ir-cal ir-cal-warning" title="Auto-created without real data — click to fill it in">⚠️ needs data</span>`
       : `<span class="ir-cal" title="${formatQty(ing.calories||0)} kcal">${formatQty(ing.calories||0)} kcal</span>`;
+    const status = ingredientCompletenessStatus(ing);
     return `<div class="ing-row${ing.needsReview ? ' needs-review' : ''}" data-id="${id}">
       <span class="ir-emoji">${ingredientIconHtml(ing)}</span>
       <span class="ir-name" title="${escapeHtml(ing.name)}">${escapeHtml(ing.name)}</span>
       <span class="ir-unit" title="per ${escapeHtml(UNIT_LABEL[ing.unit]||ing.unit)}">per ${UNIT_LABEL[ing.unit]||ing.unit}</span>
       ${calSpan}
+      <span class="ing-status-badge status-${status.level}" title="${escapeHtml(status.label)}">${status.glyph}</span>
     </div>`;
   }).join('');
   container.querySelectorAll('.ing-row').forEach(row=>{
