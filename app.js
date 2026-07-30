@@ -16,6 +16,7 @@ const state = {
   recipes: {},       // id -> {name, baseServings, ingredients:[{ingredientId,qty}], steps:[]}
   pantry: {},         // ingredientId -> {qty}
   mealPlan: {},       // id -> {date, type, recipeId, batchServings, eatenServings, sourceMealId}
+  favorites: {},       // recipeId -> true, per-account (not shared — everyone's favorites are their own)
   weekStart: startOfWeek(new Date()),
   shoppingMode: false,   // transient, not persisted
   unsubs: [],
@@ -411,11 +412,37 @@ function unitCategory(u){
 }
 // Convert qty from one unit to another. Same-family conversions (volume<->volume,
 // weight<->weight) always work with no setup. Crossing volume<->weight requires the
-// ingredient's optional gramsPerCup density; without it, returns null.
-function convertQty(qty, fromUnit, toUnit, gramsPerCup){
+// ingredient's optional gramsPerCup density. Crossing count ("each")<->weight/volume
+// requires gramsPerEach (how much one "each" weighs) — and, for count<->volume
+// specifically, gramsPerCup too, chained through grams as the common unit. Without the
+// density figures needed for a given pair, returns null rather than guessing.
+function convertQty(qty, fromUnit, toUnit, gramsPerCup, gramsPerEach){
   if (fromUnit === toUnit) return qty;
   const catFrom = unitCategory(fromUnit), catTo = unitCategory(toUnit);
-  if (catFrom === 'count' || catTo === 'count' || catFrom==='unknown' || catTo==='unknown') return null;
+  if (catFrom === 'unknown' || catTo === 'unknown') return null;
+
+  if (catFrom === 'count' || catTo === 'count'){
+    if (!gramsPerEach) return null;
+    if (catFrom === 'count' && catTo === 'count') return null; // only real case is fromUnit===toUnit, handled above
+    if (catFrom === 'count'){
+      const grams = qty * gramsPerEach;
+      if (catTo === 'weight') return grams / WEIGHT_TO_G[toUnit];
+      if (!gramsPerCup) return null; // count -> volume also needs the substance's density
+      const gramsPerMl = gramsPerCup / VOLUME_TO_ML.cup;
+      return (grams / gramsPerMl) / VOLUME_TO_ML[toUnit];
+    }
+    // catTo === 'count'
+    let grams;
+    if (catFrom === 'weight'){
+      grams = qty * WEIGHT_TO_G[fromUnit];
+    } else {
+      if (!gramsPerCup) return null;
+      const gramsPerMl = gramsPerCup / VOLUME_TO_ML.cup;
+      grams = qty * VOLUME_TO_ML[fromUnit] * gramsPerMl;
+    }
+    return grams / gramsPerEach;
+  }
+
   if (catFrom === catTo){
     if (catFrom === 'volume') return (qty * VOLUME_TO_ML[fromUnit]) / VOLUME_TO_ML[toUnit];
     return (qty * WEIGHT_TO_G[fromUnit]) / WEIGHT_TO_G[toUnit];
@@ -455,7 +482,7 @@ function convertToIngredientUnit(qty, fromUnit, ing){
     const baseFactor = customUnitBaseFactor(custom); // 1 custom-unit = baseFactor ingredient-units
     if (baseFactor > 0) return qty * baseFactor;
   }
-  return convertQty(qty, fromUnit, ing.unit, ing.gramsPerCup);
+  return convertQty(qty, fromUnit, ing.unit, ing.gramsPerCup, ing.gramsPerEach);
 }
 // The reverse: convert a quantity FROM an ingredient's own unit INTO some other unit of
 // theirs — used so a store's price can be entered per a "larger" custom unit (e.g. per
@@ -617,6 +644,11 @@ function attachListeners(){
   state.unsubs.push(onSnapshot(col('mealPlan'), snap => {
     state.mealPlan = {};
     snap.forEach(d => state.mealPlan[d.id] = d.data());
+    scheduleRenderAll();
+  }));
+  state.unsubs.push(onSnapshot(col('favorites'), snap => {
+    state.favorites = {};
+    snap.forEach(d => state.favorites[d.id] = true);
     scheduleRenderAll();
   }));
   state.unsubs.push(onSnapshot(doc(db,'users',state.uid,'settings','stores'), snap => {
@@ -789,7 +821,7 @@ function recipeCaloriesPerServing(recipe){
 // e.g. 2 tsp chili powder + 1 tsp cumin + 1 tsp paprika = "makes 4 tsp".
 function blendYieldInOwnUnit(blendIng){
   return (blendIng.blendComponents||[]).reduce((sum, comp) => {
-    const converted = convertQty(Number(comp.qty)||0, comp.unit, blendIng.unit, blendIng.gramsPerCup);
+    const converted = convertQty(Number(comp.qty)||0, comp.unit, blendIng.unit, blendIng.gramsPerCup, blendIng.gramsPerEach);
     return sum + (converted === null ? 0 : converted);
   }, 0);
 }
@@ -824,7 +856,7 @@ function expandBlendBreakdown(blendIng, neededQtyInOwnUnit, depth){
     if (!compIng) return;
     const compQty = (Number(comp.qty)||0) * scale;
     if (compIng.isBlend){
-      const compQtyInOwnUnit = convertQty(compQty, comp.unit, compIng.unit, compIng.gramsPerCup);
+      const compQtyInOwnUnit = convertQty(compQty, comp.unit, compIng.unit, compIng.gramsPerCup, compIng.gramsPerEach);
       if (compQtyInOwnUnit !== null) rows.push(...expandBlendBreakdown(compIng, compQtyInOwnUnit, depth+1));
     } else {
       rows.push({ ing: compIng, qty: compQty, unit: comp.unit });
@@ -1292,8 +1324,7 @@ function renderShoppingList(){
         const pkgWord = best.packages === 1 ? 'package' : 'packages';
         const pkgUnitLabel = UNIT_LABEL[best.priceUnit] || best.priceUnit;
         const { unit: neededDispUnit, qty: neededDispQty } = pickDisplayUnit(baseQty, category, ing.unit);
-        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each)
-          <span class="s-needed-note">need ${formatQty(neededDispQty)} ${UNIT_LABEL[neededDispUnit]||neededDispUnit}</span>`;
+        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each) <span class="s-needed-note">· need ${formatQty(neededDispQty)} ${UNIT_LABEL[neededDispUnit]||neededDispUnit}</span>`;
         pantryQty = best.boughtQtyInIngUnit; // credit the full purchased amount, incl. rounding leftover
       } else {
         const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
@@ -1327,7 +1358,7 @@ function renderShoppingList(){
           ${priceHtml}
           <span class="${amountClass}">${amountHtml}</span>
           <span class="pantry-qty-edit">
-            add <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" /> ${UNIT_LABEL[ing.unit]||ing.unit} to pantry
+            <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" /> ${UNIT_LABEL[ing.unit]||ing.unit} → pantry
           </span>
         </span>
       </label>
@@ -1450,11 +1481,27 @@ function missingIngredientsForRecipe(r){
 
 function renderRecipes(){
   const container = document.getElementById('recipe-list');
-  const entries = Object.entries(state.recipes);
+  let entries = Object.entries(state.recipes);
   if (entries.length===0){
     container.innerHTML = '<p class="shop-empty">No recipes yet. Click "+ New recipe" to add your first one.</p>';
     return;
   }
+
+  const sortMode = document.getElementById('recipe-sort-select').value || 'name-asc';
+  entries = entries.slice().sort(([idA, a], [idB, b]) => {
+    switch (sortMode){
+      case 'favorites': {
+        const favA = !!state.favorites[idA], favB = !!state.favorites[idB];
+        if (favA !== favB) return favA ? -1 : 1;
+        return (a.name||'').localeCompare(b.name||'');
+      }
+      case 'calories-asc': return recipeCaloriesPerServing(a) - recipeCaloriesPerServing(b);
+      case 'fewest-missing': return missingIngredientsForRecipe(a).length - missingIngredientsForRecipe(b).length;
+      case 'name-asc':
+      default: return (a.name||'').localeCompare(b.name||'');
+    }
+  });
+
   container.innerHTML = entries.map(([id, r]) => {
     const badges = (r.ingredients||[]).slice(0,8).map(ri => {
       const ing = state.ingredients[ri.ingredientId];
@@ -1465,7 +1512,9 @@ function renderRecipes(){
     const missing = missingIngredientsForRecipe(r);
     const cookBtnClass = missing.length ? 'btn-ghost rc-cook-btn insufficient' : 'btn-primary rc-cook-btn';
     const cookBtnLabel = missing.length ? `⚠️ Missing ${missing.length} item${missing.length>1?'s':''}` : '🍳 Cook this';
+    const isFav = !!state.favorites[id];
     return `<div class="recipe-card" data-id="${id}">
+      <button type="button" class="rc-fav-btn${isFav?' active':''}" data-id="${id}" aria-label="Favorite" title="${isFav?'Remove from favorites':'Add to favorites'}">♥</button>
       ${cover}
       <h3>${escapeHtml(r.name)}</h3>
       <div class="rc-servings">makes ${r.baseServings} servings</div>
@@ -1477,6 +1526,20 @@ function renderRecipes(){
   }).join('');
   container.querySelectorAll('.recipe-card').forEach(card=>{
     card.addEventListener('click', ()=> openRecipeModal(card.dataset.id));
+  });
+  container.querySelectorAll('.rc-fav-btn').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const isFav = !!state.favorites[id];
+      try{
+        if (isFav) await deleteDoc(doc(db,'users',state.uid,'favorites', id)).catch(()=>{});
+        else await setDoc(doc(db,'users',state.uid,'favorites', id), { favorited: true });
+      } catch(err){
+        console.error('Toggling favorite failed:', err);
+        toast("Couldn't update favorites — see console for details");
+      }
+    });
   });
   container.querySelectorAll('.rc-overview-link').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
@@ -1503,6 +1566,7 @@ function renderRecipes(){
     });
   });
 }
+document.getElementById('recipe-sort-select').addEventListener('change', renderRecipes);
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
 
@@ -1513,6 +1577,40 @@ function findExistingIngredientIdByName(name){
   const key = name.trim().toLowerCase();
   const found = Object.entries(state.ingredients).find(([id, ing]) => (ing.name||'').trim().toLowerCase() === key);
   return found ? found[0] : null;
+}
+
+// Lightweight fuzzy matching for the import preview: suggests existing ingredients
+// whose name is textually similar to (but not an exact match for) a parsed ingredient
+// name — e.g. recipe says "chicken cutlets", library already has "Chicken Cutlet (my
+// brand)". No exact-match guarantee, just a helpful nudge with a one-click way to
+// accept it — the person still decides.
+function normalizeForFuzzyMatch(str){
+  return (str||'').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function roughSingular(word){
+  return word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word;
+}
+function fuzzyNameSimilarity(a, b){
+  const normA = normalizeForFuzzyMatch(a), normB = normalizeForFuzzyMatch(b);
+  const wordsA = [...new Set(normA.split(' ').filter(Boolean))];
+  const wordsB = [...new Set(normB.split(' ').filter(Boolean))];
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+  let overlap = 0;
+  wordsA.forEach(wa => {
+    if (wordsB.some(wb => wa === wb || roughSingular(wa) === roughSingular(wb))) overlap++;
+  });
+  const union = new Set([...wordsA, ...wordsB]).size;
+  let score = overlap / union; // Jaccard similarity over words, plural-tolerant
+  if (normA.includes(normB) || normB.includes(normA)) score = Math.max(score, 0.6); // substring bonus
+  return score;
+}
+function findSimilarIngredients(name, limit){
+  const nameLower = name.trim().toLowerCase();
+  const candidates = Object.entries(state.ingredients)
+    .map(([id, ing]) => ({ id, ing, score: fuzzyNameSimilarity(name, ing.name) }))
+    .filter(c => c.score >= 0.34 && (c.ing.name||'').trim().toLowerCase() !== nameLower);
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates.slice(0, limit || 3);
 }
 
 // Copies a readonly textarea's content to the clipboard, with a manual-select
@@ -1612,8 +1710,23 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
     const badge = r.existingId
       ? `<span class="import-status-badge matched">matched</span>`
       : `<span class="import-status-badge new">new ingredient</span>`;
-    const resolveControls = r.existingId ? '' : `
+    let resolveControls = '';
+    if (!r.existingId){
+      const similar = findSimilarIngredients(r.name, 3);
+      const similarHtml = similar.length ? `
+        <div class="import-similar-suggestion">
+          <span class="import-similar-icon">💡</span>
+          <span>Looks similar to something already in your library — not an exact match, so it's still
+            marked "new" unless you pick one:</span>
+          <div class="import-similar-options">
+            ${similar.map(m => `<button type="button" class="btn btn-ghost btn-small import-similar-pick" data-existing-id="${m.id}">
+              ${ingredientIconHtml(m.ing)} ${escapeHtml(m.ing.name)}
+            </button>`).join('')}
+          </div>
+        </div>` : '';
+      resolveControls = `
       <div class="import-resolve-row" data-idx="${idx}" data-choice="new">
+        ${similarHtml}
         <div class="cu-dir-toggle">
           <button type="button" class="cu-dir-btn active" data-choice="new">Create new ingredient</button>
           <button type="button" class="cu-dir-btn" data-choice="existing">Use an existing ingredient instead</button>
@@ -1622,6 +1735,7 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
           ${ingredientComboHtml(`class="import-resolve-existing-id" value=""`)}
         </div>
       </div>`;
+    }
     return `<div class="cook-ing-item">
       <span class="s-emoji">${icon}</span>
       <span class="cook-ing-name">${escapeHtml(r.name)}${r.approximate ? ' <span class="hint" style="display:inline;">(amount not given in text)</span>' : ''}</span>
@@ -1641,6 +1755,20 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
         rowEl.dataset.choice = choice;
         rowEl.querySelectorAll('.cu-dir-btn').forEach(b => b.classList.toggle('active', b === btn));
         comboWrap.classList.toggle('hidden', choice !== 'existing');
+      });
+    });
+    // One-click accept for a suggested fuzzy match: switches this row straight to
+    // "use existing" with that ingredient already picked, no manual search needed.
+    rowEl.querySelectorAll('.import-similar-pick').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const existingId = btn.dataset.existingId;
+        rowEl.dataset.choice = 'existing';
+        rowEl.querySelectorAll('.cu-dir-btn').forEach(b => b.classList.toggle('active', b.dataset.choice === 'existing'));
+        comboWrap.classList.remove('hidden');
+        const hiddenInput = comboWrap.querySelector('.import-resolve-existing-id');
+        const searchInput = comboWrap.querySelector('.ing-combo-search');
+        hiddenInput.value = existingId;
+        searchInput.value = state.ingredients[existingId] ? state.ingredients[existingId].name : '';
       });
     });
   });
@@ -2188,13 +2316,18 @@ function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:''}){
 // whichever custom unit(s) belong to the currently-selected ingredient (its own custom
 // base unit, e.g. "bulb", and any custom sub-units defined on it, e.g. "clove").
 function unitOptionsHtml(selected, ing){
-  const opts = Object.keys(UNIT_LABEL).map(u =>
-    `<option value="${u}" ${u===selected?'selected':''}>${UNIT_LABEL[u]}</option>`);
+  const seen = new Set();
+  const opts = Object.keys(UNIT_LABEL).map(u => {
+    seen.add(u);
+    return `<option value="${u}" ${u===selected?'selected':''}>${UNIT_LABEL[u]}</option>`;
+  });
   if (ing){
     const customNames = [];
     if (ing.isCustomUnit && ing.unit) customNames.push(ing.unit);
     (ing.customUnits||[]).forEach(c => { if (c.name) customNames.push(c.name); });
     customNames.forEach(name => {
+      if (seen.has(name)) return; // e.g. a custom "each" from imported density data — the
+      seen.add(name);              // custom definition still wins at conversion time either way
       opts.push(`<option value="${escapeHtml(name)}" ${name===selected?'selected':''}>${escapeHtml(name)}</option>`);
     });
   }
@@ -2647,6 +2780,7 @@ function openIngredientModal(ingId, opts){
   document.getElementById('ingredient-name').value = ing.name || '';
   document.getElementById('ingredient-calories').value = ing.calories ?? '';
   document.getElementById('ingredient-density').value = ing.gramsPerCup ?? '';
+  document.getElementById('ingredient-grams-per-each').value = ing.gramsPerEach ?? '';
   document.getElementById('ingredient-is-spice').checked = !!ing.isSpice;
   hideAutofillSuggestion();
 
@@ -2897,6 +3031,7 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     customUnits,
     calories: Number(document.getElementById('ingredient-calories').value)||0,
     gramsPerCup: Number(document.getElementById('ingredient-density').value)||0,
+    gramsPerEach: Number(document.getElementById('ingredient-grams-per-each').value)||0,
     packaged: document.getElementById('ingredient-packaged').checked,
     isSpice: document.getElementById('ingredient-is-spice').checked,
     // This modal never edits blend composition — preserve it as-is so saving a regular
