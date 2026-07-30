@@ -264,8 +264,17 @@ input[type="file"]{
 .ing-row .ir-name{font-weight:600;}
 .ing-row .ir-unit{color:var(--ink-soft); font-family:var(--font-mono); font-size:.78rem;}
 .ing-row .ir-cal{color:var(--sage-700); font-family:var(--font-mono); font-size:.78rem; text-align:right;}
+.ing-row.needs-review{border-color:var(--danger); background:#fdf1f1;}
+.ing-row .ir-cal-warning{color:var(--danger); font-weight:700;}
 
 .panel-head-right{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+.sort-select-wrap{
+  display:flex; align-items:center; gap:8px; font-size:.82rem; font-weight:600; color:var(--ink-soft); margin:0;
+}
+.sort-select-wrap select{
+  margin:0; padding:7px 10px; border:1.5px solid var(--paper-line); border-radius:8px;
+  background:var(--paper); font-size:.85rem; color:var(--ink); font-weight:600;
+}
 
 /* ============ Shopping mode ============ */
 .shopping-mode-bar{
@@ -329,6 +338,12 @@ input[type="file"]{
 .import-status-badge.matched{background:var(--sage-100); color:var(--sage-700);}
 .import-status-badge.new{background:var(--mustard-soft); color:var(--brick-dark);}
 
+.import-resolve-row{
+  margin:-4px 0 12px; padding:10px 12px; background:var(--sage-50); border:1.5px dashed var(--paper-line);
+  border-radius:10px;
+}
+.import-resolve-combo{margin-top:8px;}
+
 .import-ing-card{
   background:var(--paper); border:1.5px solid var(--paper-line); border-radius:12px;
   padding:14px 16px; margin-bottom:12px;
@@ -337,6 +352,9 @@ input[type="file"]{
 .import-ing-card-head h4{margin:0; flex:1; font-size:1.02rem;}
 .import-ing-detail-list{display:flex; flex-direction:column; gap:3px; font-size:.83rem; color:var(--ink-soft); font-family:var(--font-mono);}
 .import-ing-detail-list strong{color:var(--ink); font-family:inherit; font-weight:700;}
+.import-ing-photo-row{display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid var(--paper-line);}
+.import-ing-photo-row label{margin:0; flex:1;}
+.import-ing-photo-thumb{width:40px; height:40px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line); flex-shrink:0;}
 
 .import-prompt-details{
   background:var(--sage-50); border:1.5px solid var(--paper-line); border-radius:11px;
