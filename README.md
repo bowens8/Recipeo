@@ -203,8 +203,11 @@ reverts rather than leaving a half-typed, invalid selection.
 
 The **Sort by** dropdown on the Ingredients tab reorders the list — alphabetically
 (A–Z or Z–A), by when it was added (newest or oldest first), or by calories (high–low
-or low–high). Ingredients created before this feature existed just sort as the oldest
-of the bunch, since there's no real creation date to go on for those.
+or low–high). Ingredients that already existed before this feature was added get a
+one-time automatic backfill the first time you sign in after updating, so date sorting
+works for them too — it's not their real historical creation date (there's no way to
+recover that), but it gives them a stable, consistent order instead of Recently/Oldest
+Added doing nothing for your existing library.
 
 ## Faster ingredient entry: autofill & bulk add
 
