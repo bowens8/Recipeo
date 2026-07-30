@@ -254,6 +254,13 @@ needed. Quick items count toward that day's calories and toward the shopping lis
 exactly like a recipe ingredient would, combining with any of the same ingredient used
 in actual recipes that week.
 
+## Favorites & sorting recipes
+
+Tap the ♥ on any recipe card to favorite it (turns red) — favorites are yours alone,
+not shared with everyone else using this planner. The **Sort by** dropdown on the
+Recipes tab reorders the list: alphabetically, favorites first, calories (low–high), or
+**fewest missing from pantry** — handy for "what can I basically make right now?"
+
 ## Cook Mode
 
 Every recipe card has two buttons: **📄 Overview** and **🍳 Cook this**.
@@ -303,6 +310,17 @@ blend — Cook Mode, Recipe Overview, and the Shopping List — a **"Mix togethe
 appears underneath, showing exactly how much of each base spice that amount works out to,
 scaled proportionally. Need 2 tbsp of a blend that makes 1⅓ tbsp per batch? It'll show
 you 1.5× everything in the recipe automatically — no manual math.
+
+## Ingredients bought by count, referenced by weight or volume
+
+Some ingredients (an onion, an egg, a bell pepper) are naturally bought "each," but
+recipes sometimes call for them by weight or volume instead ("1 onion" in one recipe,
+"150 g onion" or "1 cup diced onion" in another). Set **Grams per each** on the
+ingredient (how much one whole item weighs) to bridge "each" to weight — and if you also
+want volume amounts like cups to combine correctly, set **Grams per cup** too, since
+weight is what connects the two. Without Grams per each, "each"-based ingredients can't
+convert to weight or volume at all, so a recipe using the wrong unit for one will show
+up as unconverted on the shopping list even with Grams per cup filled in.
 
 ## Custom units (e.g. cloves ↔ bulbs)
 
