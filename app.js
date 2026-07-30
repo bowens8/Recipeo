@@ -1317,18 +1317,18 @@ function renderShoppingList(){
       storeSubtotals[best.store] = (storeSubtotals[best.store]||0) + best.cost;
       priceHtml = `<span class="s-price">$${best.cost.toFixed(2)} <span style="font-weight:400;">at ${escapeHtml(best.store)}</span></span>`;
       if (best.packages !== null){
-        // packaged item: show the whole-package purchase, not the raw fractional need,
-        // sized in whatever unit that store's price was entered in (base or a custom
-        // "larger" unit, e.g. bulb) — but also call out the actual amount needed in the
-        // ingredient's own unit, since "buy 3 packages" alone hides how much you'll use.
+        // packaged item: lead with what's actually needed (the number that matters most
+        // day-to-day), then note the package purchase underneath as supporting detail —
+        // buying "2 packages" alone doesn't tell you why.
         const pkgWord = best.packages === 1 ? 'package' : 'packages';
         const pkgUnitLabel = UNIT_LABEL[best.priceUnit] || best.priceUnit;
         const { unit: neededDispUnit, qty: neededDispQty } = pickDisplayUnit(baseQty, category, ing.unit);
-        amountHtml = `${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each) <span class="s-needed-note">· need ${formatQty(neededDispQty)} ${UNIT_LABEL[neededDispUnit]||neededDispUnit}</span>`;
+        amountHtml = `Need: ${formatQty(neededDispQty)} ${UNIT_LABEL[neededDispUnit]||neededDispUnit}
+          <span class="s-needed-note">buy ${best.packages} ${pkgWord} (${formatQty(best.packageSize)} ${pkgUnitLabel} each)</span>`;
         pantryQty = best.boughtQtyInIngUnit; // credit the full purchased amount, incl. rounding leftover
       } else {
         const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
-        amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
+        amountHtml = `Need: ${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
         pantryQty = best.boughtQtyInIngUnit;
       }
     } else if (!anyStoresOn){
@@ -1338,13 +1338,13 @@ function renderShoppingList(){
       priceHtml = '';
       amountClass = 's-amount s-amount-large';
       const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
-      amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
+      amountHtml = `Need: ${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
       pantryQty = neededQtyInIngUnit;
     } else {
       missingPriceCount++;
       priceHtml = `<span class="s-noprice">no price set${ing.packaged ? ' / no package size' : ''}</span>`;
       const { unit: dispUnit, qty: dispQty } = pickDisplayUnit(baseQty, category, ing.unit);
-      amountHtml = `${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
+      amountHtml = `Need: ${formatQty(dispQty)} ${UNIT_LABEL[dispUnit]||dispUnit}`;
       pantryQty = neededQtyInIngUnit;
     }
 
@@ -1358,7 +1358,7 @@ function renderShoppingList(){
           ${priceHtml}
           <span class="${amountClass}">${amountHtml}</span>
           <span class="pantry-qty-edit">
-            <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" /> ${UNIT_LABEL[ing.unit]||ing.unit} → pantry
+            Bought: <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" /> ${UNIT_LABEL[ing.unit]||ing.unit}
           </span>
         </span>
       </label>
