@@ -118,6 +118,16 @@
       <div class="panel-head">
         <h2>Ingredient Library</h2>
         <div class="panel-head-right">
+          <label class="sort-select-wrap">Sort by
+            <select id="ingredient-sort-select">
+              <option value="name-asc">Name (A–Z)</option>
+              <option value="name-desc">Name (Z–A)</option>
+              <option value="newest">Recently added</option>
+              <option value="oldest">Oldest added</option>
+              <option value="calories-desc">Calories (high–low)</option>
+              <option value="calories-asc">Calories (low–high)</option>
+            </select>
+          </label>
           <button id="bulk-add-btn" class="btn btn-ghost">⚡ Quick add multiple</button>
           <button id="import-ingredient-btn" class="btn btn-ghost">📄 Import detailed data</button>
           <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
@@ -369,8 +379,16 @@ recipe importer. Output ONLY the formatted text — no commentary before or afte
 no markdown code fences.
 
 Format rules:
-- Section headers (TITLE, SERVINGS, INGREDIENTS, PANTRY ITEMS, INSTRUCTIONS) are
-  each on their own line, in that order, exactly as spelled here.
+- Section headers (TITLE, SERVINGS, INGREDIENTS, PANTRY ITEMS, INSTRUCTIONS) each go
+  on their own independent line, in that order, spelled exactly as shown here — no
+  colon, no punctuation, nothing else on that line. The content for that section
+  starts on the line(s) immediately below the header, never on the same line as it.
+  For example:
+    TITLE
+    Buffalo-Spiced Crispy Chicken Cutlets
+    SERVINGS
+    2
+  NOT "TITLE: Buffalo-Spiced..." or "TITLE:" with the name on the same line.
 - PANTRY ITEMS is for basic staples (salt, pepper, oil, butter, etc.) — split
   them out from INGREDIENTS if the source distinguishes "pantry staples" from
   the shopping list; otherwise just put everything under INGREDIENTS and omit
@@ -422,6 +440,15 @@ INSTRUCTIONS
       <div id="import-preview-step" class="hidden">
         <h4 id="import-preview-title" style="margin-top:0;"></h4>
         <p class="hint" id="import-preview-meta"></p>
+
+        <label>Cover photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span>
+          <input type="file" id="import-recipe-cover-input" accept="image/*" />
+        </label>
+        <div id="import-recipe-cover-preview" class="photo-preview cover-preview hidden">
+          <img id="import-recipe-cover-img" alt="Recipe cover" />
+          <button type="button" id="import-recipe-cover-remove" class="btn btn-ghost btn-small">Remove photo</button>
+        </div>
+
         <h4>Ingredients</h4>
         <div id="import-preview-ingredients" class="cook-ingredient-list"></div>
         <h4>Steps</h4>
@@ -454,6 +481,19 @@ importer. Research it (web search + fetch the URL if I gave you one) and output
 ONLY the formatted text below — no commentary, no markdown code fences.
 
 Format rules:
+Every header line — INGREDIENT, UNIT_INFORMATION, DENSITY_CONVERSION,
+PACKAGE_INFORMATION, PRICE_INFORMATION, and each store name (ALDI, KROGER,
+GIANT_EAGLE) — is its own independent line with NOTHING else on it: no colon,
+no value, no punctuation. The data that belongs to a header always starts on
+the line(s) immediately below it, never on the same line as the header itself.
+Only the "key: value" lines (name, standard_unit, package_price, etc.) use a
+colon — headers never do. Example of correct layout:
+  INGREDIENT
+  name: Jasmine Rice
+  UNIT_INFORMATION
+  standard_unit: cup_cooked
+NOT "INGREDIENT: Jasmine Rice" or "UNIT_INFORMATION: standard_unit: ...".
+
 INGREDIENT
 name: [the ingredient's common name]
 UNIT_INFORMATION
