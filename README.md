@@ -199,6 +199,19 @@ Click it to browse everything, or start typing to filter by name. Selecting one 
 its icon and name; if you type something and click away without picking a result, it
 reverts rather than leaving a half-typed, invalid selection.
 
+## Data completeness at a glance
+
+Every row on the Ingredients tab has a small colored status dot on the right:
+
+- 🔴 **Red** — the core data is missing (no calories set). This is the same signal as
+  the "⚠️ needs data" warning on auto-created ingredients, shown as a dot here too.
+- 🟡 **Yellow** — calories are set, but it's missing a price at one or more of your
+  three stores.
+- 🟢 **Green** — fully filled in: calories, plus a price at Aldi, Kroger, *and* Giant
+  Eagle.
+
+Hover any dot for a specific reason (e.g. "Missing a price at: Giant Eagle").
+
 ## Sorting the ingredient library
 
 The **Sort by** dropdown on the Ingredients tab reorders the list — alphabetically
