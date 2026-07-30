@@ -298,7 +298,7 @@ input[type="file"]{
 .store-pill input{width:auto; margin:0; padding:0;}
 .store-pill.on{border-color:var(--sage-500); background:var(--sage-100); color:var(--sage-700);}
 .shopping-total{
-  font-family:var(--font-mono); font-size:.95rem; background:var(--mustard-soft);
+  font-family:var(--font-body); font-size:.95rem; background:var(--mustard-soft);
   border:1.5px solid #e3c479; border-radius:11px; padding:10px 16px; margin-bottom:14px;
   display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
 }
@@ -318,7 +318,7 @@ input[type="file"]{
 .s-emoji img{width:100%; height:100%; object-fit:cover;}
 .shop-item .s-name{flex:1; font-weight:600; font-size:.92rem;}
 .shop-item .s-price-block{text-align:right;}
-.shop-item .s-price{font-family:var(--font-mono); font-size:.92rem; font-weight:700; color:var(--brick); display:block;}
+.shop-item .s-price{font-family:var(--font-body); font-size:.92rem; font-weight:700; color:var(--brick); display:block;}
 .shop-item .s-amount{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-soft); display:block; margin-top:2px;}
 .pantry-qty-edit{display:none; margin-top:5px; font-size:.72rem; color:var(--ink-soft);}
 .shopping-list.mode-active .pantry-qty-edit{display:block;}
