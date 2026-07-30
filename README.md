@@ -178,7 +178,7 @@ recipe, pick whatever unit the recipe actually uses for that row — cups, tbsp,
 l, g, kg, oz, lb, or each.
 
 On the Shopping List, quantities from different recipes are combined automatically with
-**no setup required**: any volume amounts (tsp/tbsp/cup/ml/l) combine together, and any
+**no setup required**: any volume amounts (tsp/tbsp/fl oz/cup/ml/l) combine together, and any
 weight amounts (g/kg/oz/lb) combine together, then the app picks whichever size actually
 makes sense to see on a list — "3 lb" instead of "1360 g", "2 cups" instead of "32 tbsp"
 — leaning metric or US customary based on which system that ingredient's reference unit
