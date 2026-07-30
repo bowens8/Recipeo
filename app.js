@@ -1499,7 +1499,36 @@ document.getElementById('import-recipe-btn').addEventListener('click', ()=>{
   document.getElementById('import-file-input').value = '';
   document.getElementById('import-paste-step').classList.remove('hidden');
   document.getElementById('import-preview-step').classList.add('hidden');
+  state.editing.pendingImportCover = null;
+  document.getElementById('import-recipe-cover-input').value = '';
+  setImportRecipeCoverPreview(null);
   openModal('import-recipe-modal');
+});
+
+function setImportRecipeCoverPreview(dataUrl){
+  const preview = document.getElementById('import-recipe-cover-preview');
+  const img = document.getElementById('import-recipe-cover-img');
+  if (dataUrl){ img.src = dataUrl; preview.classList.remove('hidden'); }
+  else { preview.classList.add('hidden'); img.src = ''; }
+}
+document.getElementById('import-recipe-cover-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  try{
+    const rawDataUrl = await readFileAsRawDataUrl(file);
+    await openCropper(rawDataUrl, NaN, 800, 0.75, (croppedDataUrl)=>{
+      state.editing.pendingImportCover = croppedDataUrl;
+      setImportRecipeCoverPreview(croppedDataUrl);
+    });
+  } catch(err){
+    toast("Couldn't read that image");
+  }
+  e.target.value = '';
+});
+document.getElementById('import-recipe-cover-remove').addEventListener('click', ()=>{
+  state.editing.pendingImportCover = null;
+  document.getElementById('import-recipe-cover-input').value = '';
+  setImportRecipeCoverPreview(null);
 });
 
 document.getElementById('import-file-input').addEventListener('change', async (e)=>{
@@ -1539,18 +1568,44 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
   document.getElementById('import-preview-meta').textContent =
     `Makes ${parsed.baseServings} servings · ${resolved.length} ingredient${resolved.length!==1?'s':''} (${newCount} new) · ${parsed.steps.length} step${parsed.steps.length!==1?'s':''}`;
 
-  document.getElementById('import-preview-ingredients').innerHTML = resolved.map(r => {
+  document.getElementById('import-preview-ingredients').innerHTML = resolved.map((r, idx) => {
     const icon = r.existingId ? ingredientIconHtml(state.ingredients[r.existingId]) : (r.common ? r.common.emoji : '🛒');
     const badge = r.existingId
       ? `<span class="import-status-badge matched">matched</span>`
       : `<span class="import-status-badge new">new ingredient</span>`;
+    const resolveControls = r.existingId ? '' : `
+      <div class="import-resolve-row" data-idx="${idx}" data-choice="new">
+        <div class="cu-dir-toggle">
+          <button type="button" class="cu-dir-btn active" data-choice="new">Create new ingredient</button>
+          <button type="button" class="cu-dir-btn" data-choice="existing">Use an existing ingredient instead</button>
+        </div>
+        <div class="import-resolve-combo hidden">
+          ${ingredientComboHtml(`class="import-resolve-existing-id" value=""`)}
+        </div>
+      </div>`;
     return `<div class="cook-ing-item">
       <span class="s-emoji">${icon}</span>
       <span class="cook-ing-name">${escapeHtml(r.name)}${r.approximate ? ' <span class="hint" style="display:inline;">(amount not given in text)</span>' : ''}</span>
       <span class="cook-ing-qty">${formatQty(r.qty)} ${UNIT_LABEL[r.unit]||r.unit}</span>
       ${badge}
-    </div>`;
+    </div>${resolveControls}`;
   }).join('');
+
+  // Wire up the "create new" / "use existing" toggle and its search box for every
+  // unmatched row.
+  document.querySelectorAll('#import-preview-ingredients .import-resolve-row').forEach(rowEl => {
+    const comboWrap = rowEl.querySelector('.import-resolve-combo');
+    mountIngredientCombo(comboWrap, '.import-resolve-existing-id');
+    rowEl.querySelectorAll('.cu-dir-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const choice = btn.dataset.choice;
+        rowEl.dataset.choice = choice;
+        rowEl.querySelectorAll('.cu-dir-btn').forEach(b => b.classList.toggle('active', b === btn));
+        comboWrap.classList.toggle('hidden', choice !== 'existing');
+      });
+    });
+  });
+
   document.getElementById('import-preview-steps-count').textContent =
     parsed.steps.length ? `${parsed.steps.length} numbered step${parsed.steps.length!==1?'s':''} found.` : 'No numbered steps found.';
 
@@ -1568,6 +1623,23 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
   if (!pending) return;
   const btn = document.getElementById('import-confirm-btn');
   if (btn.disabled) return;
+
+  // Apply any manual resolution choices made in the preview: redirecting an
+  // otherwise-"new" ingredient to an existing one instead of creating a duplicate.
+  let unresolvedChoice = false;
+  document.querySelectorAll('#import-preview-ingredients .import-resolve-row').forEach(rowEl => {
+    const idx = Number(rowEl.dataset.idx);
+    if (rowEl.dataset.choice === 'existing'){
+      const chosenId = rowEl.querySelector('.import-resolve-existing-id').value;
+      if (chosenId) pending.resolved[idx].existingId = chosenId;
+      else unresolvedChoice = true;
+    }
+  });
+  if (unresolvedChoice){
+    toast('Pick an existing ingredient for each row set to "use an existing ingredient" — or switch it back to "create new"');
+    return;
+  }
+
   btn.disabled = true;
   try{
     let createdCount = 0;
@@ -1593,7 +1665,12 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
             isSpice: false,
             isBlend: false,
             blendComponents: [],
-            prices: {}
+            prices: {},
+            createdAt: serverTimestamp(),
+            // No matching entry in the built-in common-ingredients database means this
+            // was created blind — no real calories, no price. Flag it so it's obvious
+            // on the Ingredients tab that it needs a human to fill it in.
+            needsReview: !r.common
           };
           const docRef = await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
           ingredientId = docRef.id;
@@ -1610,11 +1687,12 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
       baseServings: pending.baseServings || 1,
       ingredients: recipeIngredients,
       steps: pending.steps.map(text => ({ text, photo: null })),
-      coverPhoto: null
+      coverPhoto: state.editing.pendingImportCover || null
     };
     await addDoc(sharedCol(SHARED_RECIPES_COLLECTION), recipeData);
 
     state.editing.pendingImport = null;
+    state.editing.pendingImportCover = null;
     closeModals();
     toast(`Imported "${recipeData.name}" — ${recipeIngredients.length} ingredients (${createdCount} new), ${pending.steps.length} steps`);
   } catch(err){
@@ -1669,7 +1747,7 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
   }));
   state.editing.pendingIngredientImport = resolved;
 
-  document.getElementById('import-ing-preview-list').innerHTML = resolved.map(r => {
+  document.getElementById('import-ing-preview-list').innerHTML = resolved.map((r, i) => {
     const storeLines = Object.entries(r.data.prices).map(([store, p]) =>
       `${store}: $${p.price.toFixed(2)} / ${formatQty(p.packageSize)} g`).join(' · ');
     const customUnitLines = r.data.customUnits.map(c =>
@@ -1677,7 +1755,7 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
     const badge = r.existingId
       ? `<span class="import-status-badge matched">updates existing</span>`
       : `<span class="import-status-badge new">new ingredient</span>`;
-    return `<div class="import-ing-card">
+    return `<div class="import-ing-card" data-idx="${i}">
       <div class="import-ing-card-head">
         <span class="s-emoji">${r.data.emoji}</span>
         <h4>${escapeHtml(r.name)}</h4>
@@ -1689,8 +1767,35 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
         ${r.data.packaged ? `<span><strong>Packaged:</strong> yes</span>` : ''}
         ${storeLines ? `<span><strong>Prices:</strong> ${escapeHtml(storeLines)}</span>` : '<span>No recognized store prices found</span>'}
       </div>
+      <div class="import-ing-photo-row">
+        <img class="import-ing-photo-thumb hidden" alt="" />
+        <label>Photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span>
+          <input type="file" accept="image/*" class="import-ing-photo-input" data-idx="${i}" />
+        </label>
+      </div>
     </div>`;
   }).join('');
+
+  document.querySelectorAll('.import-ing-photo-input').forEach(input => {
+    input.addEventListener('change', async (e)=>{
+      const file = e.target.files[0];
+      if (!file) return;
+      const idx = Number(input.dataset.idx);
+      try{
+        const rawDataUrl = await readFileAsRawDataUrl(file);
+        await openCropper(rawDataUrl, 1, 240, 0.8, (croppedDataUrl)=>{
+          resolved[idx].photo = croppedDataUrl;
+          const card = document.querySelector(`.import-ing-card[data-idx="${idx}"]`);
+          const thumb = card.querySelector('.import-ing-photo-thumb');
+          thumb.src = croppedDataUrl;
+          thumb.classList.remove('hidden');
+        });
+      } catch(err){
+        toast("Couldn't read that image");
+      }
+      input.value = '';
+    });
+  });
 
   document.getElementById('import-ing-paste-step').classList.add('hidden');
   document.getElementById('import-ing-preview-step').classList.remove('hidden');
@@ -1713,13 +1818,15 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
       if (r.existingId){
         // Merge onto the existing doc — keep its photo/emoji/isSpice/etc. as-is,
         // but the imported data fully owns unit/calories/customUnits/packaged/prices
-        // since that's exactly what this format describes.
+        // since that's exactly what this format describes. A newly-uploaded photo
+        // (if the person added one during this import) takes priority; otherwise the
+        // existing photo is left untouched.
         const existing = state.ingredients[r.existingId] || {};
         const merged = {
           ...existing,
           ...r.data,
           emoji: existing.emoji || r.data.emoji,
-          photo: existing.photo || null,
+          photo: r.photo || existing.photo || null,
           isSpice: !!existing.isSpice,
           isBlend: !!existing.isBlend,
           blendComponents: existing.blendComponents || []
@@ -1727,7 +1834,7 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
         await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, r.existingId), merged);
         updated++;
       } else {
-        await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), r.data);
+        await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), { ...r.data, photo: r.photo || null, createdAt: serverTimestamp() });
         created++;
       }
     }
@@ -2143,7 +2250,8 @@ document.getElementById('save-blend-btn').addEventListener('click', async ()=>{
     isSpice: false,
     isBlend: true,
     blendComponents: components,
-    prices: existingIng ? (existingIng.prices || {}) : {}
+    prices: existingIng ? (existingIng.prices || {}) : {},
+    createdAt: existingIng ? (existingIng.createdAt || serverTimestamp()) : serverTimestamp()
   };
 
   if (state.editing.blendId){
@@ -2360,24 +2468,54 @@ function renderPantry(){
 /* ============================================================
    RENDER: INGREDIENTS
    ============================================================ */
+// Firestore Timestamps can show up in a couple of shapes depending on SDK version and
+// whether a write is still pending locally — handle all of them, and treat ingredients
+// with no timestamp at all (created before this feature existed) as the oldest.
+function ingredientCreatedAtMillis(ing){
+  const ts = ing.createdAt;
+  if (!ts) return 0;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+  return 0;
+}
+
 function renderIngredients(){
   const container = document.getElementById('ingredient-list');
-  const entries = Object.entries(state.ingredients);
+  let entries = Object.entries(state.ingredients);
   if (entries.length===0){
     container.innerHTML = '<p class="shop-empty">No ingredients yet. Add your first one — pick an emoji, name it, and set its calories.</p>';
     return;
   }
-  container.innerHTML = entries.map(([id, ing])=>`
-    <div class="ing-row" data-id="${id}">
+
+  const sortMode = document.getElementById('ingredient-sort-select').value || 'name-asc';
+  entries = entries.slice().sort(([, a], [, b]) => {
+    switch (sortMode){
+      case 'name-desc': return (b.name||'').localeCompare(a.name||'');
+      case 'newest': return ingredientCreatedAtMillis(b) - ingredientCreatedAtMillis(a);
+      case 'oldest': return ingredientCreatedAtMillis(a) - ingredientCreatedAtMillis(b);
+      case 'calories-desc': return (Number(b.calories)||0) - (Number(a.calories)||0);
+      case 'calories-asc': return (Number(a.calories)||0) - (Number(b.calories)||0);
+      case 'name-asc':
+      default: return (a.name||'').localeCompare(b.name||'');
+    }
+  });
+
+  container.innerHTML = entries.map(([id, ing])=>{
+    const calSpan = ing.needsReview
+      ? `<span class="ir-cal ir-cal-warning" title="Auto-created without real data — click to fill it in">⚠️ needs data</span>`
+      : `<span class="ir-cal" title="${formatQty(ing.calories||0)} kcal">${formatQty(ing.calories||0)} kcal</span>`;
+    return `<div class="ing-row${ing.needsReview ? ' needs-review' : ''}" data-id="${id}">
       <span class="ir-emoji">${ingredientIconHtml(ing)}</span>
       <span class="ir-name" title="${escapeHtml(ing.name)}">${escapeHtml(ing.name)}</span>
       <span class="ir-unit" title="per ${escapeHtml(UNIT_LABEL[ing.unit]||ing.unit)}">per ${UNIT_LABEL[ing.unit]||ing.unit}</span>
-      <span class="ir-cal" title="${formatQty(ing.calories||0)} kcal">${formatQty(ing.calories||0)} kcal</span>
-    </div>`).join('');
+      ${calSpan}
+    </div>`;
+  }).join('');
   container.querySelectorAll('.ing-row').forEach(row=>{
     row.addEventListener('click', ()=> openIngredientModal(row.dataset.id));
   });
 }
+document.getElementById('ingredient-sort-select').addEventListener('change', renderIngredients);
 
 document.getElementById('new-ingredient-btn').addEventListener('click', ()=> openIngredientModal(null));
 document.getElementById('new-spice-btn').addEventListener('click', ()=> openIngredientModal(null, { presetSpice: true }));
@@ -2411,7 +2549,9 @@ document.getElementById('bulk-add-confirm-btn').addEventListener('click', async 
       calories: match ? match.calories : 0,
       gramsPerCup: 0,
       packaged: false,
-      prices: {}
+      prices: {},
+      createdAt: serverTimestamp(),
+      needsReview: !match
     };
     await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
     added++;
@@ -2695,7 +2835,9 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     // a spice blend's recipe. The dedicated blend editor owns these fields instead.
     isBlend: existingIng ? !!existingIng.isBlend : false,
     blendComponents: existingIng ? (existingIng.blendComponents || []) : [],
-    prices
+    prices,
+    createdAt: existingIng ? (existingIng.createdAt || serverTimestamp()) : serverTimestamp(),
+    needsReview: false // any manual save through this editor counts as resolved
   };
   if (state.editing.ingredientId){
     await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, state.editing.ingredientId), data);
