@@ -167,13 +167,19 @@ input[type="file"]{
   content:""; position:absolute; top:10px; left:50%; transform:translateX(-50%);
   width:16px; height:16px; border-radius:50%; background:var(--sage-50); border:1.5px solid var(--paper-line);
 }
-.recipe-card h3{font-size:1.05rem; margin-top:14px; margin-bottom:6px;}
+.rc-fav-btn{
+  position:absolute; top:8px; right:8px; z-index:1; width:30px; height:30px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center; font-size:1.05rem; line-height:1;
+  background:var(--paper); border:1.5px solid var(--paper-line); color:var(--ink-soft); cursor:pointer;
+}
+.rc-fav-btn.active{color:var(--danger); border-color:var(--danger); background:#fdf1f1;}
+.recipe-card h3{font-size:1.05rem; margin-top:14px; margin-bottom:6px; padding-right:26px;}
 .recipe-card .rc-servings{font-size:.75rem; color:var(--ink-soft); font-family:var(--font-mono);}
-.rc-ingredients{display:flex; flex-wrap:wrap; gap:4px; margin-top:10px;}
+.rc-ingredients{display:flex; flex-wrap:wrap; gap:3px; margin-top:8px;}
 .ing-badge{
   display:inline-flex; align-items:center; justify-content:center;
-  width:26px; height:26px; border-radius:50%; background:var(--sage-100);
-  font-size:.95rem; border:1px solid var(--paper-line); overflow:hidden;
+  width:19px; height:19px; border-radius:50%; background:var(--sage-100);
+  font-size:.68rem; border:1px solid var(--paper-line); overflow:hidden;
 }
 .ing-badge img{width:100%; height:100%; object-fit:cover;}
 .rc-cal{margin-top:10px; font-family:var(--font-mono); font-size:.72rem; color:var(--sage-700);}
@@ -314,7 +320,7 @@ input[type="file"]{
 .shopping-list{display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:10px; align-items:start;}
 .shop-item{
   display:flex; align-items:center; gap:12px; background:var(--paper);
-  border:1.5px solid var(--paper-line); border-radius:11px; padding:11px 14px;
+  border:1.5px solid var(--paper-line); border-radius:11px; padding:10px 14px;
 }
 .shop-item.checked{opacity:.45; text-decoration:line-through;}
 .shop-item.warn{background:var(--mustard-soft); border-color:#e3c479;}
@@ -335,7 +341,7 @@ input[type="file"]{
   border:1.5px solid var(--sage-500); border-radius:5px; background:var(--paper); color:var(--ink);
 }
 .shop-item .s-amount-large{font-size:1.05rem; font-weight:700; color:var(--ink); margin-top:0;}
-.shop-item .s-needed-note{display:block; font-size:.7rem; color:var(--sage-700); font-style:italic; margin-top:1px;}
+.shop-item .s-needed-note{font-size:.7rem; color:var(--sage-700); font-style:italic;}
 .shop-item .s-noprice{font-size:.72rem; color:var(--ink-soft); font-style:italic;}
 .shop-item-wrap{display:block;}
 
@@ -351,6 +357,15 @@ input[type="file"]{
   border-radius:10px;
 }
 .import-resolve-combo{margin-top:8px;}
+
+.import-similar-suggestion{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px;
+  padding:9px 11px; background:var(--mustard-soft); border:1.5px solid #e3c479; border-radius:9px;
+  font-size:.8rem; color:var(--ink);
+}
+.import-similar-icon{font-size:1rem;}
+.import-similar-options{display:flex; flex-wrap:wrap; gap:6px; width:100%;}
+.import-similar-pick{background:var(--paper);}
 
 .import-ing-card{
   background:var(--paper); border:1.5px solid var(--paper-line); border-radius:12px;
