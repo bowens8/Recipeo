@@ -97,6 +97,14 @@
       <div class="panel-head">
         <h2>Recipes</h2>
         <div class="panel-head-right">
+          <label class="sort-select-wrap">Sort by
+            <select id="recipe-sort-select">
+              <option value="name-asc">Name (A–Z)</option>
+              <option value="favorites">Favorites first</option>
+              <option value="calories-asc">Calories (low–high)</option>
+              <option value="fewest-missing">Fewest missing from pantry</option>
+            </select>
+          </label>
           <button id="import-recipe-btn" class="btn btn-ghost">📄 Import from text</button>
           <button id="new-recipe-btn" class="btn btn-primary">+ New recipe</button>
         </div>
@@ -272,6 +280,15 @@
         ingredient by volume (cup/tbsp/tsp) and other times by weight (g/kg/oz/lb) — e.g. one recipe says
         "2 tbsp honey", another says "50 g honey". Filling this in lets those combine correctly on the
         shopping list. A quick web search for "[ingredient] grams per cup" will give you a good number.</p>
+
+      <label>Grams per each <span style="font-weight:400;color:var(--ink-soft)">(optional — see below)</span>
+        <input type="number" id="ingredient-grams-per-each" min="0" step="0.1" placeholder="e.g. 150 for a medium onion" />
+      </label>
+      <p class="hint">Only matters if this ingredient's unit is "each" (bought as whole items — an onion, a
+        bell pepper, an egg) but a recipe sometimes calls for it by weight or volume instead — e.g. "1 onion"
+        in one recipe, "150 g onion" or "1 cup diced onion" in another. Fill in roughly how much one "each"
+        weighs, and — if you also want volume amounts like cups to work — set Grams per cup above too, since
+        weight is the bridge between the two.</p>
 
       <h4>Pricing, by store <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional — add now or anytime later by reopening this ingredient)</span></h4>
 
@@ -503,7 +520,11 @@ calories_per_standard_unit: [calories in one standard_unit]
 DENSITY_CONVERSION
 [zero or more lines like "grams_per_cup_dry: 185" or "grams_per_tbsp: 14" —
  include this section only if the ingredient is commonly measured by volume in
- more than one state (dry vs. cooked, etc.); omit entirely otherwise]
+ more than one state (dry vs. cooked, etc.); omit entirely otherwise.
+ If this ingredient is naturally counted as whole items (an onion, an egg, a
+ bell pepper) but recipes might also call for it by weight or volume, ALSO
+ include "grams_per_each: [grams one whole item weighs]" — e.g. for a medium
+ onion, "grams_per_each: 150".]
 PACKAGE_INFORMATION
 common_package_unit: [e.g. bag, box, jar, dozen]
 units_per_package: [usually 1, unless a package = e.g. "12" if sold by the dozen]
