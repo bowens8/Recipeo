@@ -126,9 +126,11 @@ This maps directly onto features already in the app, with no separate system und
   names are matched case-insensitively (`GIANT_EAGLE` → Giant Eagle, etc.).
 
 You'll see a preview first — a name that matches an existing ingredient gets **updated**
-(its unit/calories/custom units/pricing get replaced with the imported values; its photo
-and emoji are left alone) rather than creating a duplicate, so re-importing an updated
-price sheet is safe to do anytime.
+(its unit/calories/custom units/pricing get replaced with the imported values) rather
+than creating a duplicate, so re-importing an updated price sheet is safe to do anytime.
+Each card in the preview also has an optional **photo** field (same crop-and-zoom step as
+everywhere else) — leave it alone and an existing ingredient's photo/emoji stay
+untouched; upload one and it takes priority over whatever was already there.
 
 ## Import a recipe from text
 
@@ -173,7 +175,21 @@ ingredient — editable afterward like anything else.
 You'll see a preview before anything is created — every ingredient name is matched
 against your existing library first; anything that doesn't already exist gets created
 automatically (autofilled from the same built-in database used for Quick Add, where it
-recognizes the name). Click **Import recipe** to confirm.
+recognizes the name). The preview also has an optional **cover photo** field (with the
+same crop-and-zoom step as everywhere else in the app) if you want to attach one before
+importing. Click **Import recipe** to confirm.
+
+Any row marked "new ingredient" also gets a **"Create new ingredient" / "Use an existing
+ingredient instead"** toggle — handy when the recipe's wording doesn't quite match
+something already in your library (e.g. the text says "chicken cutlets" but you already
+have "Chicken Breast Cutlets"). Switch it to the second option and search for the real
+one instead of ending up with a near-duplicate.
+
+Ingredients that do get auto-created without a recognized match (no real calories, no
+price — just a placeholder) show up with a **red "⚠️ needs data" warning** on the
+Ingredients tab afterward, so they're easy to spot and go fill in. The warning clears
+the moment you open and save that ingredient, whether or not you actually change
+anything — saving it is how you tell the app "reviewed."
 
 ## Searchable ingredient picker
 
@@ -182,6 +198,13 @@ or picking one for a Quick item — it's a type-to-search box instead of a long 
 Click it to browse everything, or start typing to filter by name. Selecting one fills in
 its icon and name; if you type something and click away without picking a result, it
 reverts rather than leaving a half-typed, invalid selection.
+
+## Sorting the ingredient library
+
+The **Sort by** dropdown on the Ingredients tab reorders the list — alphabetically
+(A–Z or Z–A), by when it was added (newest or oldest first), or by calories (high–low
+or low–high). Ingredients created before this feature existed just sort as the oldest
+of the bunch, since there's no real creation date to go on for those.
 
 ## Faster ingredient entry: autofill & bulk add
 
