@@ -553,6 +553,7 @@ onAuthStateChanged(auth, (user)=>{
     appShell.classList.remove('hidden');
     attachListeners();
     migrateOwnDataToSharedIfNeeded();
+    backfillIngredientCreatedAtIfNeeded();
   } else {
     state.uid = null;
     appShell.classList.add('hidden');
@@ -651,6 +652,30 @@ async function migrateOwnDataToSharedIfNeeded(){
     toast(`Moved ${bits.join(' and ')} to the new shared library`);
   } catch(err){
     console.error('Shared-library migration check failed:', err);
+  }
+}
+
+// One-time backfill: ingredients created before the "date added" sort feature existed
+// have no createdAt at all, which means Recently/Oldest added has nothing real to sort
+// by for them (they all tie at the same value and just stay in whatever order Firestore
+// happened to return). There's no way to recover their true creation date, so this
+// assigns each a stable synthetic one instead — not historically accurate, but it makes
+// the sort actually produce a consistent, browsable order going forward rather than
+// silently doing nothing.
+async function backfillIngredientCreatedAtIfNeeded(){
+  try{
+    const snap = await getDocs(sharedCol(SHARED_INGREDIENTS_COLLECTION));
+    const missingIds = [];
+    snap.forEach(d => { if (d.data().createdAt == null) missingIds.push(d.id); });
+    if (missingIds.length === 0) return;
+
+    const base = Date.now() - missingIds.length * 1000;
+    const writes = missingIds.map((id, i) =>
+      setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, id), { createdAt: base + i * 1000 }, { merge: true })
+    );
+    await Promise.all(writes);
+  } catch(err){
+    console.error('Ingredient createdAt backfill failed:', err);
   }
 }
 
@@ -2474,6 +2499,7 @@ function renderPantry(){
 function ingredientCreatedAtMillis(ing){
   const ts = ing.createdAt;
   if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
   if (typeof ts.toMillis === 'function') return ts.toMillis();
   if (typeof ts.seconds === 'number') return ts.seconds * 1000;
   return 0;
