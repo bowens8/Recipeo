@@ -341,6 +341,20 @@ function buildIngredientDataFromBlock(block){
       if (grams > 0) customUnits.push({ name: m[1], direction: 'larger', factor: grams });
     }
   });
+  // Also populate the ingredient's plain "grams per cup" field — this is what lets a
+  // recipe use the ordinary "cup" unit (not just a compound one like "cup_dry") and
+  // still convert correctly. Prefer an exact "grams_per_cup" line if the data has one;
+  // otherwise fall back to "cooked" then "dry" then whatever cup-ish measure is given,
+  // since some density figure is more useful here than leaving it at zero.
+  const gramsPerCup =
+    Number(kv.grams_per_cup) ||
+    Number(kv.grams_per_cup_cooked) ||
+    Number(kv.grams_per_cup_dry) ||
+    (() => {
+      const anyCupKey = Object.keys(kv).find(k => /^grams_per_cup/.test(k));
+      return anyCupKey ? Number(kv[anyCupKey]) : 0;
+    })() || 0;
+
   // The package's own unit (e.g. "bag") becomes a custom unit too, if derivable.
   const packageWeightG = Number(kv.package_weight_g) || 0;
   const unitsPerPackage = Number(kv.units_per_package) || 1;
@@ -369,7 +383,7 @@ function buildIngredientDataFromBlock(block){
     isCustomUnit: false,
     customUnits,
     calories: Math.round(caloriesPerGram * 1000) / 1000,
-    gramsPerCup: 0,
+    gramsPerCup,
     packaged: packageWeightG > 0,
     isSpice: false,
     isBlend: false,
@@ -1788,6 +1802,7 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
       </div>
       <div class="import-ing-detail-list">
         <span><strong>Calories:</strong> ${formatQty(r.data.calories)} kcal/g</span>
+        ${r.data.gramsPerCup ? `<span><strong>Grams per cup:</strong> ${formatQty(r.data.gramsPerCup)} g (lets recipes use plain "cup" too)</span>` : ''}
         ${customUnitLines ? `<span><strong>Custom units:</strong> ${escapeHtml(customUnitLines)}</span>` : ''}
         ${r.data.packaged ? `<span><strong>Packaged:</strong> yes</span>` : ''}
         ${storeLines ? `<span><strong>Prices:</strong> ${escapeHtml(storeLines)}</span>` : '<span>No recognized store prices found</span>'}
@@ -1854,7 +1869,11 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
           photo: r.photo || existing.photo || null,
           isSpice: !!existing.isSpice,
           isBlend: !!existing.isBlend,
-          blendComponents: existing.blendComponents || []
+          blendComponents: existing.blendComponents || [],
+          // Only overwrite an existing density value if this import actually provided
+          // one — otherwise a re-import with no DENSITY_CONVERSION section would
+          // silently erase a value someone had set by hand.
+          gramsPerCup: r.data.gramsPerCup || existing.gramsPerCup || 0
         };
         await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, r.existingId), merged);
         updated++;
