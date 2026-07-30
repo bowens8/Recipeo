@@ -22,7 +22,7 @@ const state = {
   editing: { recipeId: null, ingredientId: null, mealId: null, mealDate: null }
 };
 
-const UNIT_LABEL = { g:"g", kg:"kg", ml:"ml", l:"L", cup:"cup", tbsp:"tbsp", tsp:"tsp", each:"each", oz:"oz", lb:"lb" };
+const UNIT_LABEL = { g:"g", kg:"kg", ml:"ml", l:"L", cup:"cup", tbsp:"tbsp", tsp:"tsp", floz:"fl oz", each:"each", oz:"oz", lb:"lb" };
 const STORES = ["Aldi", "Kroger", "Giant Eagle"];
 const MEAL_TYPE_ICON = { breakfast:'🍳', lunch:'🥪', dinner:'🍽️', snack:'🍿' };
 const MEAL_TYPE_LABEL = { breakfast:'Breakfast', lunch:'Lunch', dinner:'Dinner', snack:'Snack' };
@@ -162,7 +162,7 @@ function lookupCommonIngredient(name){
 state.storeSettings = STORES.reduce((o,s)=> (o[s]=true, o), {}); // which stores are "in play"
 
 /* ---- unit conversion ---- */
-const VOLUME_TO_ML = { ml:1, l:1000, cup:236.588, tbsp:14.7868, tsp:4.92892 };
+const VOLUME_TO_ML = { ml:1, l:1000, cup:236.588, tbsp:14.7868, tsp:4.92892, floz:29.5735 };
 const WEIGHT_TO_G = { g:1, kg:1000, oz:28.3495, lb:453.592 };
 function unitCategory(u){
   if (u in VOLUME_TO_ML) return 'volume';
@@ -248,7 +248,7 @@ function toBaseUnit(qty, unit){
 const WEIGHT_METRIC  = [['kg',1000], ['g',1]];
 const WEIGHT_US      = [['lb',453.592], ['oz',28.3495]];
 const VOLUME_METRIC  = [['l',1000], ['ml',1]];
-const VOLUME_US      = [['cup',236.588], ['tbsp',14.7868], ['tsp',4.92892]];
+const VOLUME_US      = [['cup',236.588], ['floz',29.5735], ['tbsp',14.7868], ['tsp',4.92892]];
 function pickDisplayUnit(baseQty, category, preferredUnit){
   if (category !== 'weight' && category !== 'volume'){
     return { unit: category === 'count' ? 'each' : preferredUnit, qty: baseQty };
