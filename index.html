@@ -51,6 +51,7 @@
       <button class="tab-btn" data-tab="recipes">Recipes</button>
       <button class="tab-btn" data-tab="pantry">Pantry</button>
       <button class="tab-btn" data-tab="ingredients">Ingredients</button>
+      <button class="tab-btn" data-tab="spices">Spices</button>
     </nav>
     <button id="signout-btn" class="signout-btn" title="Sign out">⎋</button>
   </header>
@@ -95,7 +96,10 @@
     <section id="tab-recipes" class="tab-panel">
       <div class="panel-head">
         <h2>Recipes</h2>
-        <button id="new-recipe-btn" class="btn btn-primary">+ New recipe</button>
+        <div class="panel-head-right">
+          <button id="import-recipe-btn" class="btn btn-ghost">📄 Import from text</button>
+          <button id="new-recipe-btn" class="btn btn-primary">+ New recipe</button>
+        </div>
       </div>
       <div id="recipe-list" class="card-grid"></div>
     </section>
@@ -115,10 +119,32 @@
         <h2>Ingredient Library</h2>
         <div class="panel-head-right">
           <button id="bulk-add-btn" class="btn btn-ghost">⚡ Quick add multiple</button>
+          <button id="import-ingredient-btn" class="btn btn-ghost">📄 Import detailed data</button>
           <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
         </div>
       </div>
       <div id="ingredient-list" class="ingredient-table"></div>
+    </section>
+
+    <!-- ---------- SPICES TAB ---------- -->
+    <section id="tab-spices" class="tab-panel">
+      <div class="panel-head">
+        <h2>Spices</h2>
+        <div class="panel-head-right">
+          <button id="new-spice-btn" class="btn btn-ghost">+ Add base spice</button>
+          <button id="new-blend-btn" class="btn btn-primary">+ New spice blend</button>
+        </div>
+      </div>
+
+      <h3 class="spice-section-title">Base spices</h3>
+      <p class="panel-sub" style="margin-bottom:14px;">What you already have on hand vs. what you need to pick up — just a
+        simple toggle, no need to track exact amounts for spices.</p>
+      <div id="base-spice-list" class="base-spice-list"></div>
+
+      <h3 class="spice-section-title" style="margin-top:32px;">Spice blends</h3>
+      <p class="panel-sub" style="margin-bottom:14px;">Mixes of your base spices — reference a blend directly in any
+        recipe, and it'll show exactly how much of each spice to combine.</p>
+      <div id="spice-blend-list" class="card-grid"></div>
     </section>
 
   </main>
@@ -189,6 +215,10 @@
         <button type="button" id="ingredient-autofill-apply" class="btn btn-ghost btn-small">Use these</button>
         <button type="button" id="ingredient-autofill-dismiss" class="icon-btn" aria-label="Dismiss">✕</button>
       </div>
+      <label class="checkbox-inline">
+        <input type="checkbox" id="ingredient-is-spice" />
+        This is a spice — show it on the Spices tab
+      </label>
       <div class="field-row">
         <label>Unit
           <select id="ingredient-unit">
@@ -257,6 +287,45 @@
     </div>
   </div>
 
+  <!-- Spice blend editor -->
+  <div id="blend-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3 id="blend-modal-title">New spice blend</h3>
+      <button class="icon-btn modal-close" data-close="blend-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <label class="label-inline">Emoji
+          <input type="text" id="blend-emoji" maxlength="4" placeholder="🌶️" style="width:60px;text-align:center;font-size:1.4rem" />
+        </label>
+        <label style="flex:1">Blend name
+          <input type="text" id="blend-name" placeholder="e.g. Taco Seasoning" />
+        </label>
+      </div>
+      <label class="label-inline">Stored/used in
+        <select id="blend-unit" style="width:120px">
+          <option value="tsp">tsp</option>
+          <option value="tbsp">tbsp</option>
+          <option value="cup">cup</option>
+          <option value="g">g</option>
+          <option value="oz">oz</option>
+        </select>
+      </label>
+      <p class="hint">This is the unit recipes will use when calling for this blend — e.g. "2 tbsp Taco Seasoning".</p>
+
+      <h4>Made from</h4>
+      <div id="blend-components" class="recipe-ingredients"></div>
+      <button type="button" id="add-blend-component" class="btn btn-ghost btn-small">+ Add spice</button>
+
+      <p class="hint" id="blend-yield-note" style="margin-top:14px;"></p>
+
+      <div class="modal-actions">
+        <button id="delete-blend-btn" class="btn btn-danger hidden">Delete blend</button>
+        <button id="save-blend-btn" class="btn btn-primary">Save blend</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Bulk add ingredients -->
   <div id="bulk-add-modal" class="modal hidden">
     <div class="modal-head">
@@ -279,6 +348,188 @@ cheddar cheese"></textarea>
         <span></span>
         <button type="button" id="bulk-add-confirm-btn" class="btn btn-primary">Add ingredients</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Import recipe from text -->
+  <div id="import-recipe-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3>Import recipe from text</h3>
+      <button class="icon-btn modal-close" data-close="import-recipe-modal">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div id="import-paste-step">
+        <details class="import-prompt-details">
+          <summary>📋 Don't have the text yet? Get a ready-to-use prompt for Claude</summary>
+          <p class="hint">Copy this, paste it into a new message to Claude along with a recipe URL, then paste
+            whatever Claude sends back into the box below.</p>
+          <textarea readonly rows="9" class="import-prompt-text" id="import-recipe-prompt-text">Fetch this recipe page and convert it into this EXACT plain-text format for a
+recipe importer. Output ONLY the formatted text — no commentary before or after,
+no markdown code fences.
+
+Format rules:
+- Section headers (TITLE, SERVINGS, INGREDIENTS, PANTRY ITEMS, INSTRUCTIONS) are
+  each on their own line, in that order, exactly as spelled here.
+- PANTRY ITEMS is for basic staples (salt, pepper, oil, butter, etc.) — split
+  them out from INGREDIENTS if the source distinguishes "pantry staples" from
+  the shopping list; otherwise just put everything under INGREDIENTS and omit
+  the PANTRY ITEMS section entirely.
+- Every ingredient line starts with "- " followed by a quantity, a unit, then
+  the name — e.g. "- 8 oz broccoli florets" or "- 1/4 cup panko breadcrumbs".
+  Fractions and decimals are both fine. If something has no natural unit, just
+  give a count, e.g. "- 2 scallions". If a source ingredient has no amount at
+  all (e.g. "salt, to taste"), just write the name with no number, e.g. "- Salt".
+- Convert weird/non-standard units into one of: tsp, tbsp, cup, fl oz, oz, lb,
+  g, kg, ml, l — pick whichever the source most naturally uses.
+- INSTRUCTIONS are numbered "1.", "2.", etc., one step per line, in the source's
+  original wording (condense only if a step is unreasonably long).
+- SERVINGS is a single number. If the source gives a range (e.g. "4-6"), pick
+  the lower number.
+
+Recipe URL: [paste your recipe URL here]</textarea>
+          <button type="button" class="btn btn-ghost btn-small" id="copy-recipe-prompt-btn">📋 Copy prompt</button>
+        </details>
+
+        <label>Upload a .txt file
+          <input type="file" id="import-file-input" accept=".txt,text/plain" />
+        </label>
+        <p class="hint" style="margin-top:-6px;">Or paste the text directly below.</p>
+        <label>Recipe text
+          <textarea id="import-textarea" rows="14" style="font-family:var(--font-mono); font-size:.82rem;" placeholder="TITLE
+My Recipe Name
+SERVINGS
+4
+INGREDIENTS
+- 1 cup flour
+- 2 eggs
+PANTRY ITEMS
+- Salt
+- Pepper
+INSTRUCTIONS
+1. Do the first thing.
+2. Do the next thing."></textarea>
+        </label>
+        <p class="hint">Expects the format: <code>TITLE</code>, <code>SERVINGS</code>, <code>INGREDIENTS</code>,
+          <code>PANTRY ITEMS</code> (optional), and <code>INSTRUCTIONS</code> as section headers, each on their
+          own line — ingredient lines starting with "- ", steps numbered "1.", "2." etc.</p>
+        <div class="modal-actions">
+          <span></span>
+          <button type="button" id="import-preview-btn" class="btn btn-primary">Preview import</button>
+        </div>
+      </div>
+
+      <div id="import-preview-step" class="hidden">
+        <h4 id="import-preview-title" style="margin-top:0;"></h4>
+        <p class="hint" id="import-preview-meta"></p>
+        <h4>Ingredients</h4>
+        <div id="import-preview-ingredients" class="cook-ingredient-list"></div>
+        <h4>Steps</h4>
+        <p class="hint" id="import-preview-steps-count"></p>
+        <div class="modal-actions">
+          <button type="button" id="import-back-btn" class="btn btn-ghost">Back</button>
+          <button type="button" id="import-confirm-btn" class="btn btn-primary">Import recipe</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Import detailed ingredient data from text -->
+  <div id="import-ingredient-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3>Import ingredient data</h3>
+      <button class="icon-btn modal-close" data-close="import-ingredient-modal">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div id="import-ing-paste-step">
+        <details class="import-prompt-details">
+          <summary>📋 Don't have the data yet? Get a ready-to-use prompt for Claude</summary>
+          <p class="hint">Prices are Claude's best current estimate, not a live lookup — worth a sanity check
+            before a big shopping trip. Copy this, paste it into a new message to Claude with an ingredient
+            name (and a product URL if you have one), then paste whatever it sends back below.</p>
+          <textarea readonly rows="9" class="import-prompt-text" id="import-ing-prompt-text">I need data on one grocery ingredient formatted as an exact text block for an
+importer. Research it (web search + fetch the URL if I gave you one) and output
+ONLY the formatted text below — no commentary, no markdown code fences.
+
+Format rules:
+INGREDIENT
+name: [the ingredient's common name]
+UNIT_INFORMATION
+standard_unit: [a natural serving/measure unit, e.g. cup_cooked, slice, tbsp]
+standard_unit_weight_g: [grams that one standard_unit weighs]
+calories_per_standard_unit: [calories in one standard_unit]
+DENSITY_CONVERSION
+[zero or more lines like "grams_per_cup_dry: 185" or "grams_per_tbsp: 14" —
+ include this section only if the ingredient is commonly measured by volume in
+ more than one state (dry vs. cooked, etc.); omit entirely otherwise]
+PACKAGE_INFORMATION
+common_package_unit: [e.g. bag, box, jar, dozen]
+units_per_package: [usually 1, unless a package = e.g. "12" if sold by the dozen]
+package_weight_g: [total grams in one typical package]
+PRICE_INFORMATION
+ALDI
+package_price: [your best current estimate in USD]
+package_size_g: [grams in the package this price is for]
+KROGER
+package_price: [...]
+package_size_g: [...]
+GIANT_EAGLE
+package_price: [...]
+package_size_g: [...]
+
+If you can't find a real price at one of the three stores, give your best
+estimate based on similar products and say so in a line right after this block
+(clearly separate from the formatted text above, since that part needs to be
+pasted in as-is).
+
+Ingredient: [name here]
+Optional product page URL: [URL or leave blank]</textarea>
+          <button type="button" class="btn btn-ghost btn-small" id="copy-ing-prompt-btn">📋 Copy prompt</button>
+        </details>
+
+        <label>Upload a .txt file
+          <input type="file" id="import-ing-file-input" accept=".txt,text/plain" />
+        </label>
+        <p class="hint" style="margin-top:-6px;">Or paste the text directly below. One or more
+          <code>INGREDIENT</code> blocks — paste as many as you like in one file.</p>
+        <label>Ingredient data
+          <textarea id="import-ing-textarea" rows="16" style="font-family:var(--font-mono); font-size:.8rem;" placeholder="INGREDIENT
+name: Jasmine Rice
+UNIT_INFORMATION
+standard_unit: cup_cooked
+standard_unit_weight_g: 158
+calories_per_standard_unit: 205
+DENSITY_CONVERSION
+grams_per_cup_dry: 185
+grams_per_cup_cooked: 158
+PACKAGE_INFORMATION
+common_package_unit: bag
+units_per_package: 1
+package_weight_g: 2268
+PRICE_INFORMATION
+ALDI
+package_price: 4.99
+package_size_g: 2268
+KROGER
+package_price: 5.99
+package_size_g: 2268"></textarea>
+        </label>
+        <div class="modal-actions">
+          <span></span>
+          <button type="button" id="import-ing-preview-btn" class="btn btn-primary">Preview import</button>
+        </div>
+      </div>
+
+      <div id="import-ing-preview-step" class="hidden">
+        <div id="import-ing-preview-list"></div>
+        <div class="modal-actions">
+          <button type="button" id="import-ing-back-btn" class="btn btn-ghost">Back</button>
+          <button type="button" id="import-ing-confirm-btn" class="btn btn-primary">Import ingredients</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -425,6 +676,7 @@ cheddar cheese"></textarea>
       <h3>📋 Steps</h3>
       <div id="cook-steps-list" class="cook-steps-list"></div>
     </section>
+    <button type="button" id="cook-done-btn" class="btn btn-primary cook-done-btn">✅ I cooked this — remove ingredients from pantry</button>
   </div>
 </div>
 
