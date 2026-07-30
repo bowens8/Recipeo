@@ -121,6 +121,7 @@ const COMMON_INGREDIENTS = {
   // spices
   "salt": { emoji:"🧂", unit:"tsp", calories:0 },
   "black pepper": { emoji:"🧂", unit:"tsp", calories:6 },
+  "pepper": { emoji:"🧂", unit:"tsp", calories:6 },
   "garlic powder": { emoji:"🧄", unit:"tsp", calories:10 },
   "onion powder": { emoji:"🧅", unit:"tsp", calories:8 },
   "paprika": { emoji:"🌶️", unit:"tsp", calories:6 },
@@ -160,6 +161,230 @@ function lookupCommonIngredient(name){
   return null;
 }
 state.storeSettings = STORES.reduce((o,s)=> (o[s]=true, o), {}); // which stores are "in play"
+
+/* ============================================================
+   RECIPE TEXT IMPORTER — parses a specific plain-text recipe format:
+     TITLE / SERVINGS / INGREDIENTS / PANTRY ITEMS (optional) / INSTRUCTIONS
+   as section headers on their own line, "- " ingredient lines, and
+   "1.", "2." numbered instruction lines.
+   ============================================================ */
+const IMPORT_UNIT_WORDS = {
+  'tbsp':'tbsp', 'tablespoon':'tbsp', 'tablespoons':'tbsp',
+  'tsp':'tsp', 'teaspoon':'tsp', 'teaspoons':'tsp',
+  'cup':'cup', 'cups':'cup',
+  'oz':'oz', 'ounce':'oz', 'ounces':'oz',
+  'lb':'lb', 'lbs':'lb', 'pound':'lb', 'pounds':'lb',
+  'g':'g', 'gram':'g', 'grams':'g',
+  'kg':'kg', 'kilogram':'kg', 'kilograms':'kg',
+  'ml':'ml', 'milliliter':'ml', 'milliliters':'ml',
+  'l':'l', 'liter':'l', 'liters':'l',
+  'fl oz':'floz', 'fluid ounce':'floz', 'fluid ounces':'floz',
+};
+function parseImportFraction(token){
+  const parts = token.split('/');
+  const n = Number(parts[0]), d = Number(parts[1]);
+  return d ? n/d : Number(token);
+}
+function parseImportQtyToken(token){
+  token = token.trim();
+  if (/\s/.test(token)){ // mixed number like "1 1/2"
+    const [whole, frac] = token.split(/\s+/);
+    return (Number(whole)||0) + parseImportFraction(frac);
+  }
+  if (token.includes('/')) return parseImportFraction(token);
+  return Number(token);
+}
+// Parses one "- ..." ingredient line into {name, qty, unit, approximate}.
+// Handles "8 oz broccoli florets", "1/4 cup panko breadcrumbs", "2 scallions"
+// (no unit word -> "each"), and "Salt" (no quantity at all -> nominal placeholder).
+function parseImportIngredientLine(raw){
+  let line = raw.replace(/^[-*]\s*/, '').trim();
+  if (!line) return null;
+
+  const qtyRegex = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s*/;
+  const qtyMatch = line.match(qtyRegex);
+  let qty = null, rest = line;
+  if (qtyMatch){
+    qty = parseImportQtyToken(qtyMatch[1]);
+    rest = line.slice(qtyMatch[0].length).trim();
+  }
+
+  let unit = null;
+  const words = rest.split(/\s+/);
+  const firstTwo = words.slice(0,2).join(' ').toLowerCase().replace(/[.,]$/,'');
+  const firstOne = (words[0]||'').toLowerCase().replace(/[.,]$/,'');
+  if (IMPORT_UNIT_WORDS[firstTwo]){
+    unit = IMPORT_UNIT_WORDS[firstTwo];
+    rest = words.slice(2).join(' ');
+  } else if (IMPORT_UNIT_WORDS[firstOne]){
+    unit = IMPORT_UNIT_WORDS[firstOne];
+    rest = words.slice(1).join(' ');
+  }
+
+  const name = rest.trim();
+  if (!name) return null;
+
+  if (qty === null){
+    // e.g. "Salt", "Pepper" — no amount given at all. Use a matching common
+    // ingredient's usual unit if we know one, otherwise just "each" as a nominal
+    // placeholder — either way it's editable after import.
+    const common = lookupCommonIngredient(name);
+    return { name, qty: 1, unit: common ? common.unit : 'each', approximate: true };
+  }
+  return { name, qty, unit: unit || 'each', approximate: false };
+}
+function parseRecipeImportText(text){
+  const lines = text.split(/\r?\n/).map(l => l.trim());
+  const HEADERS = ['TITLE','SERVINGS','INGREDIENTS','PANTRY ITEMS','INSTRUCTIONS'];
+  const sections = { TITLE:[], SERVINGS:[], INGREDIENTS:[], 'PANTRY ITEMS':[], INSTRUCTIONS:[] };
+  let current = null;
+  for (const line of lines){
+    if (!line) continue;
+    const upper = line.toUpperCase();
+    if (HEADERS.includes(upper)){ current = upper; continue; }
+    if (current) sections[current].push(line);
+  }
+
+  const name = sections.TITLE[0] || '';
+  const baseServings = Number((sections.SERVINGS[0]||'').replace(/[^\d.]/g,'')) || 1;
+
+  const ingredientLines = [...sections.INGREDIENTS, ...sections['PANTRY ITEMS']]
+    .filter(l => /^[-*]/.test(l));
+  const ingredients = ingredientLines.map(parseImportIngredientLine).filter(Boolean);
+
+  const steps = [];
+  sections.INSTRUCTIONS.forEach(line => {
+    const m = line.match(/^\d+[.)]\s*(.*)$/);
+    if (m) steps.push(m[1].trim());
+    else if (steps.length) steps[steps.length-1] += ' ' + line; // wrapped continuation line
+  });
+
+  return { name, baseServings, ingredients, steps, hasAnyContent: !!(name || ingredients.length || steps.length) };
+}
+
+/* ============================================================
+   DETAILED INGREDIENT DATA IMPORTER — parses one or more "INGREDIENT" blocks,
+   each with UNIT_INFORMATION / DENSITY_CONVERSION / PACKAGE_INFORMATION /
+   PRICE_INFORMATION sub-sections of "key: value" lines (PRICE_INFORMATION is
+   further split by store-name lines). Maps cleanly onto the app's existing
+   systems: grams as the canonical unit, DENSITY_CONVERSION entries become
+   custom units (via the same engine as "1 bulb = 10 cloves"), and
+   PACKAGE_INFORMATION + PRICE_INFORMATION become packaged-item store pricing.
+   ============================================================ */
+function canonicalStoreName(raw){
+  const normalized = raw.replace(/_/g,' ').trim().toLowerCase();
+  return STORES.find(s => s.toLowerCase() === normalized) || null;
+}
+function splitIngredientBlocks(text){
+  const lines = text.split(/\r?\n/).map(l => l.trim());
+  const blocks = [];
+  let current = null;
+  for (const line of lines){
+    if (!line) continue;
+    if (/^INGREDIENT$/i.test(line)){
+      current = [];
+      blocks.push(current);
+      continue;
+    }
+    if (current) current.push(line);
+  }
+  return blocks;
+}
+function parseIngredientDataBlock(lines){
+  const SECTION_HEADERS = ['UNIT_INFORMATION','DENSITY_CONVERSION','PACKAGE_INFORMATION','PRICE_INFORMATION'];
+  let name = '';
+  const kv = {};
+  const prices = {}; // canonical store name -> {package_price, package_size_g}
+  let section = null;
+  let currentStore = null;
+
+  for (const line of lines){
+    const kvMatch = line.match(/^([a-zA-Z_]+)\s*:\s*(.+)$/);
+    if (kvMatch && kvMatch[1].toLowerCase() === 'name' && !section){
+      name = kvMatch[2].trim();
+      continue;
+    }
+    if (SECTION_HEADERS.includes(line.toUpperCase())){
+      section = line.toUpperCase();
+      currentStore = null;
+      continue;
+    }
+    if (section === 'PRICE_INFORMATION'){
+      if (kvMatch){
+        if (currentStore) prices[currentStore][kvMatch[1].toLowerCase()] = kvMatch[2].trim();
+      } else {
+        const canonical = canonicalStoreName(line) || line.replace(/_/g,' ');
+        currentStore = canonical;
+        prices[currentStore] = prices[currentStore] || {};
+      }
+      continue;
+    }
+    if (kvMatch) kv[kvMatch[1].toLowerCase()] = kvMatch[2].trim();
+  }
+  if (!name) return null;
+  return { name, kv, prices };
+}
+// Converts one parsed block into the app's actual ingredient document shape.
+function buildIngredientDataFromBlock(block){
+  const kv = block.kv;
+  const standardUnitWeightG = Number(kv.standard_unit_weight_g) || 0;
+  const caloriesPerStandardUnit = Number(kv.calories_per_standard_unit) || 0;
+  const caloriesPerGram = standardUnitWeightG > 0 ? caloriesPerStandardUnit / standardUnitWeightG : 0;
+
+  // DENSITY_CONVERSION: any "grams_per_X" key becomes a custom "larger" unit worth
+  // that many grams — e.g. grams_per_cup_dry: 185 -> custom unit "cup_dry" = 185 g.
+  const customUnits = [];
+  Object.keys(kv).forEach(key => {
+    const m = key.match(/^grams_per_(.+)$/);
+    if (m){
+      const grams = Number(kv[key]);
+      if (grams > 0) customUnits.push({ name: m[1], direction: 'larger', factor: grams });
+    }
+  });
+  // The package's own unit (e.g. "bag") becomes a custom unit too, if derivable.
+  const packageWeightG = Number(kv.package_weight_g) || 0;
+  const unitsPerPackage = Number(kv.units_per_package) || 1;
+  if (kv.common_package_unit && packageWeightG > 0 && unitsPerPackage > 0){
+    const gramsPerPackageUnit = packageWeightG / unitsPerPackage;
+    if (!customUnits.some(c => c.name === kv.common_package_unit)){
+      customUnits.push({ name: kv.common_package_unit, direction: 'larger', factor: gramsPerPackageUnit });
+    }
+  }
+
+  const prices = {};
+  Object.entries(block.prices).forEach(([storeName, p]) => {
+    const canonical = canonicalStoreName(storeName);
+    if (!canonical) return; // unrecognized store name — skip rather than guess
+    const price = Number(p.package_price);
+    const packageSize = Number(p.package_size_g) || packageWeightG;
+    if (price > 0 && packageSize > 0) prices[canonical] = { price, packageSize, unit: '' };
+  });
+
+  const common = lookupCommonIngredient(block.name);
+  return {
+    name: block.name,
+    emoji: common ? common.emoji : '🛒',
+    photo: null,
+    unit: 'g',
+    isCustomUnit: false,
+    customUnits,
+    calories: Math.round(caloriesPerGram * 1000) / 1000,
+    gramsPerCup: 0,
+    packaged: packageWeightG > 0,
+    isSpice: false,
+    isBlend: false,
+    blendComponents: [],
+    prices
+  };
+}
+function parseIngredientImportText(text){
+  return splitIngredientBlocks(text)
+    .map(parseIngredientDataBlock)
+    .filter(Boolean)
+    .map(block => ({ name: block.name, data: buildIngredientDataFromBlock(block) }));
+}
+
+
 
 /* ---- unit conversion ---- */
 const VOLUME_TO_ML = { ml:1, l:1000, cup:236.588, tbsp:14.7868, tsp:4.92892, floz:29.5735 };
@@ -351,26 +576,33 @@ const SHARED_INGREDIENTS_COLLECTION = 'shared_ingredients';
 const SHARED_RECIPES_COLLECTION = 'shared_recipes';
 function sharedCol(name){ return collection(db, name); }
 
+let renderAllScheduled = false;
+function scheduleRenderAll(){
+  if (renderAllScheduled) return;
+  renderAllScheduled = true;
+  setTimeout(()=>{ renderAllScheduled = false; renderAll(); }, 0);
+}
+
 function attachListeners(){
   state.unsubs.push(onSnapshot(sharedCol(SHARED_INGREDIENTS_COLLECTION), snap => {
     state.ingredients = {};
     snap.forEach(d => state.ingredients[d.id] = d.data());
-    renderAll();
+    scheduleRenderAll();
   }));
   state.unsubs.push(onSnapshot(sharedCol(SHARED_RECIPES_COLLECTION), snap => {
     state.recipes = {};
     snap.forEach(d => state.recipes[d.id] = d.data());
-    renderAll();
+    scheduleRenderAll();
   }));
   state.unsubs.push(onSnapshot(col('pantry'), snap => {
     state.pantry = {};
     snap.forEach(d => state.pantry[d.id] = d.data());
-    renderAll();
+    scheduleRenderAll();
   }));
   state.unsubs.push(onSnapshot(col('mealPlan'), snap => {
     state.mealPlan = {};
     snap.forEach(d => state.mealPlan[d.id] = d.data());
-    renderAll();
+    scheduleRenderAll();
   }));
   state.unsubs.push(onSnapshot(doc(db,'users',state.uid,'settings','stores'), snap => {
     if (snap.exists()){
@@ -486,6 +718,7 @@ function renderAll(){
   renderRecipes();
   renderPantry();
   renderIngredients();
+  renderSpicesTab();
 }
 
 /* ============================================================
@@ -504,6 +737,69 @@ function recipeCaloriesTotal(recipe){
 function recipeCaloriesPerServing(recipe){
   const total = recipeCaloriesTotal(recipe);
   return recipe.baseServings ? total / recipe.baseServings : 0;
+}
+
+/* ============================================================
+   SPICE BLENDS — a blend is just an Ingredient (isBlend:true) whose
+   "recipe" is a list of base-spice components. Because it's a normal
+   Ingredient, it's automatically searchable/usable anywhere any other
+   ingredient is (recipes, quick items, shopping list, pantry, cook mode) —
+   these helpers are what make the math work everywhere else.
+   ============================================================ */
+// How much of the blend's own unit its component list actually makes.
+// e.g. 2 tsp chili powder + 1 tsp cumin + 1 tsp paprika = "makes 4 tsp".
+function blendYieldInOwnUnit(blendIng){
+  return (blendIng.blendComponents||[]).reduce((sum, comp) => {
+    const converted = convertQty(Number(comp.qty)||0, comp.unit, blendIng.unit, blendIng.gramsPerCup);
+    return sum + (converted === null ? 0 : converted);
+  }, 0);
+}
+// Calories per 1 unit of the blend, rolled up from its components — computed once at
+// save time and stored just like any other ingredient's calories, so nothing else in
+// the app (recipe calorie totals, etc.) needs to know or care that it's a blend.
+function blendCaloriesPerOwnUnit(blendIng){
+  const yieldAmt = blendYieldInOwnUnit(blendIng);
+  if (yieldAmt <= 0) return 0;
+  const totalCal = (blendIng.blendComponents||[]).reduce((sum, comp) => {
+    const compIng = state.ingredients[comp.ingredientId];
+    if (!compIng) return sum;
+    const compQtyInOwnUnit = convertToIngredientUnit(Number(comp.qty)||0, comp.unit, compIng);
+    if (compQtyInOwnUnit === null) return sum;
+    return sum + (Number(compIng.calories)||0) * compQtyInOwnUnit;
+  }, 0);
+  return totalCal / yieldAmt;
+}
+// Given a needed amount of a blend (in the blend's own unit), returns the scaled
+// breakdown of each base spice required — recursing through nested blends too, though
+// that's a rare case. Used to show "exactly how much of each spice to mix" wherever a
+// recipe calls for a blend.
+function expandBlendBreakdown(blendIng, neededQtyInOwnUnit, depth){
+  depth = depth || 0;
+  if (depth > 5) return []; // guard against an accidental circular blend reference
+  const yieldAmt = blendYieldInOwnUnit(blendIng);
+  if (yieldAmt <= 0) return [];
+  const scale = neededQtyInOwnUnit / yieldAmt;
+  const rows = [];
+  (blendIng.blendComponents||[]).forEach(comp => {
+    const compIng = state.ingredients[comp.ingredientId];
+    if (!compIng) return;
+    const compQty = (Number(comp.qty)||0) * scale;
+    if (compIng.isBlend){
+      const compQtyInOwnUnit = convertQty(compQty, comp.unit, compIng.unit, compIng.gramsPerCup);
+      if (compQtyInOwnUnit !== null) rows.push(...expandBlendBreakdown(compIng, compQtyInOwnUnit, depth+1));
+    } else {
+      rows.push({ ing: compIng, qty: compQty, unit: comp.unit });
+    }
+  });
+  return rows;
+}
+// Renders the "→ exactly how much of each spice to mix" note shown under a blend
+// ingredient anywhere one's used (Cook Mode, Recipe Overview, Shopping List).
+function blendBreakdownHtml(blendIng, neededQtyInOwnUnit){
+  const rows = expandBlendBreakdown(blendIng, neededQtyInOwnUnit);
+  if (!rows.length) return '';
+  const lines = rows.map(r => `<div class="blend-breakdown-row"><span>${ingredientIconHtml(r.ing)} ${escapeHtml(r.ing.name)}</span><span>${formatQty(r.qty)} ${UNIT_LABEL[r.unit]||r.unit}</span></div>`).join('');
+  return `<div class="blend-breakdown"><span class="blend-breakdown-title">Mix together:</span>${lines}</div>`;
 }
 
 /* ============================================================
@@ -982,15 +1278,22 @@ function renderShoppingList(){
       pantryQty = neededQtyInIngUnit;
     }
 
-    return `<label class="shop-item" data-ing="${id}">
-      <input type="checkbox" class="shop-check" data-ing="${id}" data-pantry-qty="${pantryQty}" />
-      <span class="s-emoji">${ingredientIconHtml(ing)}</span>
-      <span class="s-name">${escapeHtml(ing.name)}</span>
-      <span class="s-price-block">
-        ${priceHtml}
-        <span class="${amountClass}">${amountHtml}</span>
-      </span>
-    </label>`;
+    const breakdown = ing.isBlend ? blendBreakdownHtml(ing, neededQtyInIngUnit) : '';
+    return `<div class="shop-item-wrap">
+      <label class="shop-item" data-ing="${id}">
+        <input type="checkbox" class="shop-check" data-ing="${id}" />
+        <span class="s-emoji">${ingredientIconHtml(ing)}</span>
+        <span class="s-name">${escapeHtml(ing.name)}</span>
+        <span class="s-price-block">
+          ${priceHtml}
+          <span class="${amountClass}">${amountHtml}</span>
+          <span class="pantry-qty-edit">
+            add <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" /> ${UNIT_LABEL[ing.unit]||ing.unit} to pantry
+          </span>
+        </span>
+      </label>
+      ${breakdown}
+    </div>`;
   }).join('');
 
   const warnHtml = warnRows.map(w => {
@@ -1013,6 +1316,12 @@ function renderShoppingList(){
       e.target.closest('.shop-item').classList.toggle('checked', e.target.checked);
       updateShoppingModeCount();
     });
+  });
+  // Clicking/typing into the pantry-amount field shouldn't also toggle the row's
+  // checkbox, since it lives inside the same <label>.
+  container.querySelectorAll('.pantry-qty-input').forEach(input=>{
+    input.addEventListener('click', e => e.stopPropagation());
+    input.addEventListener('mousedown', e => e.stopPropagation());
   });
   updateShoppingModeCount();
 
@@ -1059,7 +1368,11 @@ document.getElementById('finish-shopping-btn').addEventListener('click', async (
 
   const writes = checkedBoxes.map(cb => {
     const ingId = cb.dataset.ing;
-    const boughtQty = Number(cb.dataset.pantryQty) || 0;
+    // Read from the editable "add X to pantry" field next to this item — pre-filled
+    // with the computed amount, but the person may have adjusted it (e.g. the store
+    // only had a 16 oz package instead of the usual 12 oz).
+    const qtyInput = cb.closest('.shop-item').querySelector('.pantry-qty-input');
+    const boughtQty = Number(qtyInput ? qtyInput.value : 0) || 0;
     const currentHave = Number(state.pantry[ingId]?.qty) || 0;
     return setDoc(doc(db,'users',state.uid,'pantry', ingId), { qty: currentHave + boughtQty });
   });
@@ -1154,6 +1467,280 @@ function renderRecipes(){
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
 
+/* ============================================================
+   RECIPE TEXT IMPORTER — modal wiring
+   ============================================================ */
+function findExistingIngredientIdByName(name){
+  const key = name.trim().toLowerCase();
+  const found = Object.entries(state.ingredients).find(([id, ing]) => (ing.name||'').trim().toLowerCase() === key);
+  return found ? found[0] : null;
+}
+
+// Copies a readonly textarea's content to the clipboard, with a manual-select
+// fallback for browsers/contexts where the Clipboard API isn't available.
+async function copyPromptTextarea(textareaId){
+  const ta = document.getElementById(textareaId);
+  try{
+    await navigator.clipboard.writeText(ta.value);
+    toast('Prompt copied — paste it into a new message to Claude');
+  } catch(err){
+    ta.removeAttribute('readonly');
+    ta.focus();
+    ta.select();
+    ta.setAttribute('readonly', '');
+    toast("Couldn't auto-copy — text is selected, press Cmd/Ctrl+C");
+  }
+}
+document.getElementById('copy-recipe-prompt-btn').addEventListener('click', ()=> copyPromptTextarea('import-recipe-prompt-text'));
+document.getElementById('copy-ing-prompt-btn').addEventListener('click', ()=> copyPromptTextarea('import-ing-prompt-text'));
+
+document.getElementById('import-recipe-btn').addEventListener('click', ()=>{
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-paste-step').classList.remove('hidden');
+  document.getElementById('import-preview-step').classList.add('hidden');
+  openModal('import-recipe-modal');
+});
+
+document.getElementById('import-file-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  try{
+    const text = await file.text();
+    document.getElementById('import-textarea').value = text;
+  } catch(err){
+    console.error('Could not read import file:', err);
+    toast("Couldn't read that file");
+  }
+});
+
+document.getElementById('import-preview-btn').addEventListener('click', ()=>{
+  const raw = document.getElementById('import-textarea').value;
+  const parsed = parseRecipeImportText(raw);
+  if (!parsed.hasAnyContent){
+    toast('Nothing recognized — check the text matches the expected format');
+    return;
+  }
+  if (parsed.ingredients.length === 0){
+    toast('No ingredient lines found (expected lines starting with "- ")');
+    return;
+  }
+
+  // Resolve each parsed ingredient to an existing match or "will create new"
+  const resolved = parsed.ingredients.map(ing => {
+    const existingId = findExistingIngredientIdByName(ing.name);
+    const common = existingId ? null : lookupCommonIngredient(ing.name);
+    return { ...ing, existingId, common };
+  });
+  state.editing.pendingImport = { name: parsed.name, baseServings: parsed.baseServings, steps: parsed.steps, resolved };
+
+  document.getElementById('import-preview-title').textContent = parsed.name || '(no title found)';
+  const newCount = resolved.filter(r => !r.existingId).length;
+  document.getElementById('import-preview-meta').textContent =
+    `Makes ${parsed.baseServings} servings · ${resolved.length} ingredient${resolved.length!==1?'s':''} (${newCount} new) · ${parsed.steps.length} step${parsed.steps.length!==1?'s':''}`;
+
+  document.getElementById('import-preview-ingredients').innerHTML = resolved.map(r => {
+    const icon = r.existingId ? ingredientIconHtml(state.ingredients[r.existingId]) : (r.common ? r.common.emoji : '🛒');
+    const badge = r.existingId
+      ? `<span class="import-status-badge matched">matched</span>`
+      : `<span class="import-status-badge new">new ingredient</span>`;
+    return `<div class="cook-ing-item">
+      <span class="s-emoji">${icon}</span>
+      <span class="cook-ing-name">${escapeHtml(r.name)}${r.approximate ? ' <span class="hint" style="display:inline;">(amount not given in text)</span>' : ''}</span>
+      <span class="cook-ing-qty">${formatQty(r.qty)} ${UNIT_LABEL[r.unit]||r.unit}</span>
+      ${badge}
+    </div>`;
+  }).join('');
+  document.getElementById('import-preview-steps-count').textContent =
+    parsed.steps.length ? `${parsed.steps.length} numbered step${parsed.steps.length!==1?'s':''} found.` : 'No numbered steps found.';
+
+  document.getElementById('import-paste-step').classList.add('hidden');
+  document.getElementById('import-preview-step').classList.remove('hidden');
+});
+
+document.getElementById('import-back-btn').addEventListener('click', ()=>{
+  document.getElementById('import-preview-step').classList.add('hidden');
+  document.getElementById('import-paste-step').classList.remove('hidden');
+});
+
+document.getElementById('import-confirm-btn').addEventListener('click', async ()=>{
+  const pending = state.editing.pendingImport;
+  if (!pending) return;
+  const btn = document.getElementById('import-confirm-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try{
+    let createdCount = 0;
+    const newlyCreatedByName = {}; // dedupe if the same new ingredient name appears twice in one import
+    const recipeIngredients = [];
+    for (const r of pending.resolved){
+      let ingredientId = r.existingId;
+      if (!ingredientId){
+        const key = r.name.trim().toLowerCase();
+        if (newlyCreatedByName[key]){
+          ingredientId = newlyCreatedByName[key];
+        } else {
+          const data = {
+            name: r.name,
+            emoji: r.common ? r.common.emoji : '🛒',
+            photo: null,
+            unit: r.common ? r.common.unit : r.unit,
+            isCustomUnit: false,
+            customUnits: [],
+            calories: r.common ? r.common.calories : 0,
+            gramsPerCup: 0,
+            packaged: false,
+            isSpice: false,
+            isBlend: false,
+            blendComponents: [],
+            prices: {}
+          };
+          const docRef = await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
+          ingredientId = docRef.id;
+          state.ingredients[ingredientId] = data;
+          newlyCreatedByName[key] = ingredientId;
+          createdCount++;
+        }
+      }
+      recipeIngredients.push({ ingredientId, qty: r.qty, unit: r.unit });
+    }
+
+    const recipeData = {
+      name: pending.name || 'Imported recipe',
+      baseServings: pending.baseServings || 1,
+      ingredients: recipeIngredients,
+      steps: pending.steps.map(text => ({ text, photo: null })),
+      coverPhoto: null
+    };
+    await addDoc(sharedCol(SHARED_RECIPES_COLLECTION), recipeData);
+
+    state.editing.pendingImport = null;
+    closeModals();
+    toast(`Imported "${recipeData.name}" — ${recipeIngredients.length} ingredients (${createdCount} new), ${pending.steps.length} steps`);
+  } catch(err){
+    console.error('Recipe import failed:', err);
+    toast("Couldn't import that recipe — see console for details");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ============================================================
+   DETAILED INGREDIENT DATA IMPORTER — modal wiring
+   ============================================================ */
+document.getElementById('import-ingredient-btn').addEventListener('click', ()=>{
+  document.getElementById('import-ing-textarea').value = '';
+  document.getElementById('import-ing-file-input').value = '';
+  document.getElementById('import-ing-paste-step').classList.remove('hidden');
+  document.getElementById('import-ing-preview-step').classList.add('hidden');
+  openModal('import-ingredient-modal');
+});
+
+document.getElementById('import-ing-file-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  try{
+    document.getElementById('import-ing-textarea').value = await file.text();
+  } catch(err){
+    console.error('Could not read import file:', err);
+    toast("Couldn't read that file");
+  }
+});
+
+document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>{
+  const raw = document.getElementById('import-ing-textarea').value;
+  let parsed;
+  try{
+    parsed = parseIngredientImportText(raw);
+  } catch(err){
+    console.error('Ingredient import parse failed:', err);
+    toast("Couldn't parse that text — check it matches the expected format");
+    return;
+  }
+  if (parsed.length === 0){
+    toast('No "INGREDIENT" blocks found — check the text matches the expected format');
+    return;
+  }
+
+  const resolved = parsed.map(p => ({
+    name: p.name,
+    data: p.data,
+    existingId: findExistingIngredientIdByName(p.name)
+  }));
+  state.editing.pendingIngredientImport = resolved;
+
+  document.getElementById('import-ing-preview-list').innerHTML = resolved.map(r => {
+    const storeLines = Object.entries(r.data.prices).map(([store, p]) =>
+      `${store}: $${p.price.toFixed(2)} / ${formatQty(p.packageSize)} g`).join(' · ');
+    const customUnitLines = r.data.customUnits.map(c =>
+      `1 ${c.name} = ${formatQty(c.factor)} g`).join(', ');
+    const badge = r.existingId
+      ? `<span class="import-status-badge matched">updates existing</span>`
+      : `<span class="import-status-badge new">new ingredient</span>`;
+    return `<div class="import-ing-card">
+      <div class="import-ing-card-head">
+        <span class="s-emoji">${r.data.emoji}</span>
+        <h4>${escapeHtml(r.name)}</h4>
+        ${badge}
+      </div>
+      <div class="import-ing-detail-list">
+        <span><strong>Calories:</strong> ${formatQty(r.data.calories)} kcal/g</span>
+        ${customUnitLines ? `<span><strong>Custom units:</strong> ${escapeHtml(customUnitLines)}</span>` : ''}
+        ${r.data.packaged ? `<span><strong>Packaged:</strong> yes</span>` : ''}
+        ${storeLines ? `<span><strong>Prices:</strong> ${escapeHtml(storeLines)}</span>` : '<span>No recognized store prices found</span>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('import-ing-paste-step').classList.add('hidden');
+  document.getElementById('import-ing-preview-step').classList.remove('hidden');
+});
+
+document.getElementById('import-ing-back-btn').addEventListener('click', ()=>{
+  document.getElementById('import-ing-preview-step').classList.add('hidden');
+  document.getElementById('import-ing-paste-step').classList.remove('hidden');
+});
+
+document.getElementById('import-ing-confirm-btn').addEventListener('click', async ()=>{
+  const pending = state.editing.pendingIngredientImport;
+  if (!pending || !pending.length) return;
+  const btn = document.getElementById('import-ing-confirm-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try{
+    let created = 0, updated = 0;
+    for (const r of pending){
+      if (r.existingId){
+        // Merge onto the existing doc — keep its photo/emoji/isSpice/etc. as-is,
+        // but the imported data fully owns unit/calories/customUnits/packaged/prices
+        // since that's exactly what this format describes.
+        const existing = state.ingredients[r.existingId] || {};
+        const merged = {
+          ...existing,
+          ...r.data,
+          emoji: existing.emoji || r.data.emoji,
+          photo: existing.photo || null,
+          isSpice: !!existing.isSpice,
+          isBlend: !!existing.isBlend,
+          blendComponents: existing.blendComponents || []
+        };
+        await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, r.existingId), merged);
+        updated++;
+      } else {
+        await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), r.data);
+        created++;
+      }
+    }
+    state.editing.pendingIngredientImport = null;
+    closeModals();
+    toast(`Imported ${pending.length} ingredient${pending.length!==1?'s':''} — ${created} new, ${updated} updated`);
+  } catch(err){
+    console.error('Ingredient data import failed:', err);
+    toast("Couldn't import — see console for details");
+  } finally {
+    btn.disabled = false;
+  }
+});
 /* ---- "missing ingredients" confirmation before Cook Mode ---- */
 function openMissingIngredientsModal(recipeId, missing){
   state.editing.pendingCookRecipeId = recipeId;
@@ -1185,6 +1772,7 @@ document.getElementById('cook-confirm-anyway-btn').addEventListener('click', ()=
 function openCookMode(recipeId){
   const r = state.recipes[recipeId];
   if (!r) return;
+  state.editing.cookingRecipeId = recipeId;
 
   document.getElementById('cook-recipe-title').textContent = r.name;
   document.getElementById('cook-servings-label').textContent = `makes ${r.baseServings}`;
@@ -1194,12 +1782,14 @@ function openCookMode(recipeId){
     const ing = state.ingredients[ri.ingredientId];
     if (!ing) return '';
     const unit = ri.unit || ing.unit;
+    const qty = Number(ri.qty)||0;
+    const breakdown = ing.isBlend ? blendBreakdownHtml(ing, convertToIngredientUnit(qty, unit, ing) ?? 0) : '';
     return `<label class="cook-ing-item">
       <input type="checkbox" />
       <span class="s-emoji">${ingredientIconHtml(ing)}</span>
       <span class="cook-ing-name">${escapeHtml(ing.name)}</span>
-      <span class="cook-ing-qty">${formatQty(Number(ri.qty)||0)} ${UNIT_LABEL[unit]||unit}</span>
-    </label>`;
+      <span class="cook-ing-qty">${formatQty(qty)} ${UNIT_LABEL[unit]||unit}</span>
+    </label>${breakdown}`;
   }).join('');
   ingList.innerHTML = rowsHtml || '<p class="shop-empty">No ingredients listed for this recipe.</p>';
   ingList.querySelectorAll('.cook-ing-item').forEach(item=>{
@@ -1223,6 +1813,36 @@ function openCookMode(recipeId){
 }
 document.getElementById('cook-close-btn').addEventListener('click', ()=>{
   document.getElementById('cook-overlay').classList.add('hidden');
+});
+document.getElementById('cook-done-btn').addEventListener('click', async ()=>{
+  const recipeId = state.editing.cookingRecipeId;
+  const r = state.recipes[recipeId];
+  if (!r){ toast("Couldn't tell which recipe this was"); return; }
+  const btn = document.getElementById('cook-done-btn');
+  btn.disabled = true;
+  try{
+    const writes = [];
+    (r.ingredients||[]).forEach(ri => {
+      const ing = state.ingredients[ri.ingredientId];
+      if (!ing) return;
+      const rowUnit = ri.unit || ing.unit;
+      const usedQtyInIngUnit = convertToIngredientUnit(Number(ri.qty)||0, rowUnit, ing);
+      if (usedQtyInIngUnit === null || usedQtyInIngUnit <= 0) return;
+      const haveQty = Number(state.pantry[ri.ingredientId]?.qty) || 0;
+      const newQty = Math.max(0, haveQty - usedQtyInIngUnit);
+      writes.push(newQty > 0
+        ? setDoc(doc(db,'users',state.uid,'pantry', ri.ingredientId), { qty: newQty })
+        : deleteDoc(doc(db,'users',state.uid,'pantry', ri.ingredientId)).catch(()=>{}));
+    });
+    await Promise.all(writes);
+    toast(`Pantry updated — ingredients for ${r.name} removed`);
+    document.getElementById('cook-overlay').classList.add('hidden');
+  } catch(err){
+    console.error('"I cooked this" failed:', err);
+    toast("Couldn't update your pantry — see console for details");
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 /* ============================================================
@@ -1249,11 +1869,13 @@ function openRecipeOverview(recipeId){
     const ing = state.ingredients[ri.ingredientId];
     if (!ing) return '';
     const unit = ri.unit || ing.unit;
+    const qty = Number(ri.qty)||0;
+    const breakdown = ing.isBlend ? blendBreakdownHtml(ing, convertToIngredientUnit(qty, unit, ing) ?? 0) : '';
     return `<div class="cook-ing-item">
       <span class="s-emoji">${ingredientIconHtml(ing)}</span>
       <span class="cook-ing-name">${escapeHtml(ing.name)}</span>
-      <span class="cook-ing-qty">${formatQty(Number(ri.qty)||0)} ${UNIT_LABEL[unit]||unit}</span>
-    </div>`;
+      <span class="cook-ing-qty">${formatQty(qty)} ${UNIT_LABEL[unit]||unit}</span>
+    </div>${breakdown}`;
   }).join('');
   ingList.innerHTML = ingRows || '<p class="shop-empty">No ingredients listed for this recipe.</p>';
 
@@ -1344,20 +1966,24 @@ function ingredientComboHtml(hiddenAttrs){
     <div class="ing-combo-list hidden"></div>
   </div>`;
 }
-function mountIngredientCombo(root, hiddenSelector){
+function mountIngredientCombo(root, hiddenSelector, filterFn){
   const searchInput = root.querySelector('.ing-combo-search');
   const hiddenInput = root.querySelector(hiddenSelector);
   const listEl = root.querySelector('.ing-combo-list');
 
   function renderList(filterText){
+    if (!listEl.isConnected) return; // row was removed since this was scheduled
     const q = (filterText||'').trim().toLowerCase();
-    const ids = Object.keys(state.ingredients).filter(id => !q || state.ingredients[id].name.toLowerCase().includes(q));
+    let ids = Object.keys(state.ingredients);
+    if (filterFn) ids = ids.filter(id => filterFn(state.ingredients[id]));
+    ids = ids.filter(id => !q || state.ingredients[id].name.toLowerCase().includes(q));
     listEl.innerHTML = ids.length
       ? ids.slice(0,50).map(id => `<div class="ing-combo-item" data-id="${id}">${ingredientComboLabel(state.ingredients[id])}</div>`).join('')
       : `<div class="ing-combo-empty">No matches — add it on the Ingredients tab first</div>`;
     listEl.classList.remove('hidden');
   }
   function selectIngredient(id){
+    if (!hiddenInput.isConnected) return;
     hiddenInput.value = id;
     searchInput.value = state.ingredients[id] ? state.ingredients[id].name : '';
     listEl.classList.add('hidden');
@@ -1372,6 +1998,10 @@ function mountIngredientCombo(root, hiddenSelector){
   });
   searchInput.addEventListener('blur', ()=>{
     setTimeout(()=>{
+      // The row (and this whole combo) may have been removed from the DOM in the 150ms
+      // since blur fired — e.g. the modal was closed/reopened for a different recipe.
+      // Touching a detached node here was an intermittent source of save errors.
+      if (!listEl.isConnected || !searchInput.isConnected) return;
       listEl.classList.add('hidden');
       // revert the visible text to match whatever's actually selected, in case they
       // typed to search but clicked away without picking anything
@@ -1420,6 +2050,168 @@ function unitOptionsHtml(selected, ing){
   return opts.join('');
 }
 document.getElementById('add-recipe-ingredient').addEventListener('click', ()=> addRecipeIngredientRow());
+
+/* ============================================================
+   SPICE BLEND EDITOR
+   ============================================================ */
+const blendComponentsEl = document.getElementById('blend-components');
+
+function openBlendModal(ingId){
+  state.editing.blendId = ingId;
+  const ing = ingId ? state.ingredients[ingId] : { emoji:'🌶️', name:'', unit:'tsp', blendComponents:[] };
+  document.getElementById('blend-modal-title').textContent = ingId ? 'Edit spice blend' : 'New spice blend';
+  document.getElementById('blend-emoji').value = ing.emoji || '🌶️';
+  document.getElementById('blend-name').value = ing.name || '';
+  document.getElementById('blend-unit').value = ing.unit || 'tsp';
+
+  blendComponentsEl.innerHTML = '';
+  (ing.blendComponents && ing.blendComponents.length ? ing.blendComponents : [{ingredientId:'', qty:'', unit:'tsp'}])
+    .forEach(comp => addBlendComponentRow(comp));
+
+  refreshBlendYieldNote();
+  document.getElementById('delete-blend-btn').classList.toggle('hidden', !ingId);
+  openModal('blend-modal');
+}
+
+function addBlendComponentRow(comp = {ingredientId:'', qty:'', unit:'tsp'}){
+  const row = document.createElement('div');
+  row.className = 'ri-row';
+  const initialIng = comp.ingredientId ? state.ingredients[comp.ingredientId] : null;
+  const initialUnit = comp.unit || (initialIng ? initialIng.unit : 'tsp');
+  row.innerHTML = `
+    ${ingredientComboHtml(`class="blend-comp-ingredient" value="${comp.ingredientId||''}"`)}
+    <input type="number" class="blend-comp-qty" placeholder="qty" step="any" min="0" value="${comp.qty ?? ''}" />
+    <select class="blend-comp-unit">${unitOptionsHtml(initialUnit, initialIng)}</select>
+    <button type="button" class="ri-remove">✕</button>`;
+  // Only base spices (not other blends) can go into a blend — keeps things simple and
+  // avoids any risk of a blend accidentally referencing itself.
+  mountIngredientCombo(row.querySelector('.ing-combo'), '.blend-comp-ingredient', ing => ing.isSpice && !ing.isBlend);
+  row.querySelector('.blend-comp-ingredient').addEventListener('change', (e)=>{
+    const ing = state.ingredients[e.target.value];
+    if (ing) row.querySelector('.blend-comp-unit').value = ing.unit;
+    refreshBlendYieldNote();
+  });
+  row.querySelector('.blend-comp-qty').addEventListener('input', refreshBlendYieldNote);
+  row.querySelector('.blend-comp-unit').addEventListener('change', refreshBlendYieldNote);
+  row.querySelector('.ri-remove').addEventListener('click', ()=>{ row.remove(); refreshBlendYieldNote(); });
+  blendComponentsEl.appendChild(row);
+}
+document.getElementById('add-blend-component').addEventListener('click', ()=>{
+  addBlendComponentRow();
+  refreshBlendYieldNote();
+});
+
+function currentBlendComponentsFromForm(){
+  return Array.from(blendComponentsEl.querySelectorAll('.ri-row')).map(row => ({
+    ingredientId: row.querySelector('.blend-comp-ingredient').value,
+    qty: Number(row.querySelector('.blend-comp-qty').value) || 0,
+    unit: row.querySelector('.blend-comp-unit').value
+  })).filter(c => c.ingredientId && c.qty > 0);
+}
+
+function refreshBlendYieldNote(){
+  const unit = document.getElementById('blend-unit').value;
+  const components = currentBlendComponentsFromForm();
+  const yieldAmt = blendYieldInOwnUnit({ unit, blendComponents: components, gramsPerCup: 0 });
+  const note = document.getElementById('blend-yield-note');
+  note.textContent = yieldAmt > 0
+    ? `This mix makes about ${formatQty(yieldAmt)} ${UNIT_LABEL[unit]||unit} total — that's what recipes will scale against.`
+    : 'Add spices with amounts above to see how much this makes.';
+}
+document.getElementById('blend-unit').addEventListener('change', refreshBlendYieldNote);
+
+document.getElementById('save-blend-btn').addEventListener('click', async ()=>{
+  const name = document.getElementById('blend-name').value.trim();
+  if (!name){ toast('Give the blend a name'); return; }
+  const components = currentBlendComponentsFromForm();
+  if (components.length === 0){ toast('Add at least one spice to the blend'); return; }
+  const unit = document.getElementById('blend-unit').value;
+
+  const existingIng = state.editing.blendId ? state.ingredients[state.editing.blendId] : null;
+  const calories = blendCaloriesPerOwnUnit({ unit, blendComponents: components, gramsPerCup: 0 });
+
+  const data = {
+    name,
+    emoji: document.getElementById('blend-emoji').value.trim() || '🌶️',
+    photo: existingIng ? (existingIng.photo || null) : null,
+    unit,
+    isCustomUnit: false,
+    customUnits: [],
+    calories,
+    gramsPerCup: 0,
+    packaged: existingIng ? !!existingIng.packaged : false,
+    isSpice: false,
+    isBlend: true,
+    blendComponents: components,
+    prices: existingIng ? (existingIng.prices || {}) : {}
+  };
+
+  if (state.editing.blendId){
+    await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, state.editing.blendId), data);
+  } else {
+    await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
+  }
+  closeModals();
+  toast('Spice blend saved');
+});
+
+document.getElementById('delete-blend-btn').addEventListener('click', async ()=>{
+  if (!state.editing.blendId) return;
+  if (!confirm('Delete this spice blend? It\'s shared, so this removes it for everyone using this planner, and any recipe using it will show a missing ingredient.')) return;
+  await deleteDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, state.editing.blendId));
+  closeModals();
+  toast('Spice blend deleted');
+});
+
+/* ============================================================
+   SPICES TAB — base spice have/need list + spice blend cards
+   ============================================================ */
+function renderSpicesTab(){
+  const baseListEl = document.getElementById('base-spice-list');
+  const baseSpices = Object.entries(state.ingredients).filter(([id,ing]) => ing.isSpice && !ing.isBlend);
+  baseListEl.innerHTML = baseSpices.length ? baseSpices.map(([id, ing]) => {
+    const have = (Number(state.pantry[id]?.qty)||0) > 0;
+    return `<div class="spice-row" data-id="${id}">
+      <span class="p-emoji">${ingredientIconHtml(ing)}</span>
+      <span class="p-name">${escapeHtml(ing.name)}</span>
+      <button type="button" class="spice-have-toggle ${have?'have':'need'}" data-id="${id}">${have ? '✅ Have it' : '🛒 Need to buy'}</button>
+    </div>`;
+  }).join('') : '<p class="shop-empty">No base spices yet — click "+ Add base spice" above to add your first one.</p>';
+
+  baseListEl.querySelectorAll('.p-name').forEach(nameEl => {
+    nameEl.addEventListener('click', ()=> openIngredientModal(nameEl.closest('.spice-row').dataset.id));
+  });
+  baseListEl.querySelectorAll('.spice-have-toggle').forEach(btn => {
+    btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.id;
+      const have = (Number(state.pantry[id]?.qty)||0) > 0;
+      if (have){
+        await deleteDoc(doc(db,'users',state.uid,'pantry', id)).catch(()=>{});
+      } else {
+        await setDoc(doc(db,'users',state.uid,'pantry', id), { qty: 1 });
+      }
+    });
+  });
+
+  const blendListEl = document.getElementById('spice-blend-list');
+  const blends = Object.entries(state.ingredients).filter(([id,ing]) => ing.isBlend);
+  blendListEl.innerHTML = blends.length ? blends.map(([id, ing]) => {
+    const badges = (ing.blendComponents||[]).slice(0,8).map(c => {
+      const compIng = state.ingredients[c.ingredientId];
+      return `<span class="ing-badge" title="${compIng?escapeHtml(compIng.name):''}">${ingredientIconHtml(compIng)}</span>`;
+    }).join('');
+    const yieldAmt = blendYieldInOwnUnit(ing);
+    return `<div class="recipe-card" data-id="${id}">
+      <h3>${ing.emoji||'🌶️'} ${escapeHtml(ing.name)}</h3>
+      <div class="rc-servings">makes ${formatQty(yieldAmt)} ${UNIT_LABEL[ing.unit]||ing.unit}</div>
+      <div class="rc-ingredients">${badges}</div>
+    </div>`;
+  }).join('') : '<p class="shop-empty">No spice blends yet — click "+ New spice blend" above to create your first mix.</p>';
+  blendListEl.querySelectorAll('.recipe-card').forEach(card => {
+    card.addEventListener('click', ()=> openBlendModal(card.dataset.id));
+  });
+}
+document.getElementById('new-blend-btn').addEventListener('click', ()=> openBlendModal(null));
 
 function addRecipeStepRow(step=''){
   const text = typeof step === 'string' ? step : (step.text || '');
@@ -1477,7 +2269,21 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
   const baseServings = Number(document.getElementById('recipe-servings').value)||1;
   if (!name){ toast('Give the recipe a name'); return; }
 
-  const ingredients = Array.from(recipeIngredientsEl.querySelectorAll('.ri-row')).map(row=>({
+  const allRows = Array.from(recipeIngredientsEl.querySelectorAll('.ri-row'));
+  // Catch rows that look filled in but never actually got a valid ingredient picked from
+  // the search list — e.g. typed a name and clicked away without selecting a result.
+  // These used to just silently vanish on save, which looked like the app "lost" them.
+  const halfFilled = allRows.some(row => {
+    const hasIngredient = !!row.querySelector('.ri-ingredient').value;
+    const hasQty = Number(row.querySelector('.ri-qty').value) > 0;
+    return hasQty && !hasIngredient;
+  });
+  if (halfFilled){
+    toast('One of your ingredient rows has an amount but no ingredient selected — pick one from the search results');
+    return;
+  }
+
+  const ingredients = allRows.map(row=>({
     ingredientId: row.querySelector('.ri-ingredient').value,
     qty: Number(row.querySelector('.ri-qty').value)||0,
     unit: row.querySelector('.ri-unit').value
@@ -1490,13 +2296,23 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
 
   const data = { name, baseServings, ingredients, steps, coverPhoto: state.editing.recipeCover || null };
 
-  if (state.editing.recipeId){
-    await setDoc(doc(db, SHARED_RECIPES_COLLECTION, state.editing.recipeId), data);
-  } else {
-    await addDoc(sharedCol(SHARED_RECIPES_COLLECTION), data);
+  const btn = document.getElementById('save-recipe-btn');
+  if (btn.disabled) return; // guard against a double-click firing two saves
+  btn.disabled = true;
+  try{
+    if (state.editing.recipeId){
+      await setDoc(doc(db, SHARED_RECIPES_COLLECTION, state.editing.recipeId), data);
+    } else {
+      await addDoc(sharedCol(SHARED_RECIPES_COLLECTION), data);
+    }
+    closeModals();
+    toast('Recipe saved');
+  } catch(err){
+    console.error('Recipe save failed:', err);
+    toast("Couldn't save the recipe — see console for details");
+  } finally {
+    btn.disabled = false;
   }
-  closeModals();
-  toast('Recipe saved');
 });
 
 document.getElementById('delete-recipe-btn').addEventListener('click', async ()=>{
@@ -1554,9 +2370,9 @@ function renderIngredients(){
   container.innerHTML = entries.map(([id, ing])=>`
     <div class="ing-row" data-id="${id}">
       <span class="ir-emoji">${ingredientIconHtml(ing)}</span>
-      <span class="ir-name">${escapeHtml(ing.name)}</span>
-      <span class="ir-unit">per ${UNIT_LABEL[ing.unit]||ing.unit}</span>
-      <span class="ir-cal">${ing.calories||0} kcal</span>
+      <span class="ir-name" title="${escapeHtml(ing.name)}">${escapeHtml(ing.name)}</span>
+      <span class="ir-unit" title="per ${escapeHtml(UNIT_LABEL[ing.unit]||ing.unit)}">per ${UNIT_LABEL[ing.unit]||ing.unit}</span>
+      <span class="ir-cal" title="${formatQty(ing.calories||0)} kcal">${formatQty(ing.calories||0)} kcal</span>
     </div>`).join('');
   container.querySelectorAll('.ing-row').forEach(row=>{
     row.addEventListener('click', ()=> openIngredientModal(row.dataset.id));
@@ -1564,6 +2380,7 @@ function renderIngredients(){
 }
 
 document.getElementById('new-ingredient-btn').addEventListener('click', ()=> openIngredientModal(null));
+document.getElementById('new-spice-btn').addEventListener('click', ()=> openIngredientModal(null, { presetSpice: true }));
 
 document.getElementById('bulk-add-btn').addEventListener('click', ()=>{
   document.getElementById('bulk-add-textarea').value = '';
@@ -1612,14 +2429,16 @@ const ingredientPhotoInput = document.getElementById('ingredient-photo-input');
 const ingredientPhotoPreview = document.getElementById('ingredient-photo-preview');
 const ingredientPhotoImg = document.getElementById('ingredient-photo-img');
 
-function openIngredientModal(ingId){
+function openIngredientModal(ingId, opts){
+  opts = opts || {};
   state.editing.ingredientId = ingId;
-  const ing = ingId ? state.ingredients[ingId] : { emoji:'🥕', name:'', unit:'g', calories:'', prices:{}, photo:null, packaged:false, isCustomUnit:false, customUnits:[] };
+  const ing = ingId ? state.ingredients[ingId] : { emoji:'🌶️', name:'', unit: opts.presetSpice ? 'tsp' : 'g', calories:'', prices:{}, photo:null, packaged:false, isCustomUnit:false, customUnits:[], isSpice: !!opts.presetSpice };
   document.getElementById('ingredient-modal-title').textContent = ingId ? 'Edit ingredient' : 'New ingredient';
-  document.getElementById('ingredient-emoji').value = ing.emoji || '🥕';
+  document.getElementById('ingredient-emoji').value = ing.emoji || (opts.presetSpice ? '🌶️' : '🥕');
   document.getElementById('ingredient-name').value = ing.name || '';
   document.getElementById('ingredient-calories').value = ing.calories ?? '';
   document.getElementById('ingredient-density').value = ing.gramsPerCup ?? '';
+  document.getElementById('ingredient-is-spice').checked = !!ing.isSpice;
   hideAutofillSuggestion();
 
   const unitSelect = document.getElementById('ingredient-unit');
@@ -1859,6 +2678,7 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     }
   });
 
+  const existingIng = state.editing.ingredientId ? state.ingredients[state.editing.ingredientId] : null;
   const data = {
     name,
     emoji: document.getElementById('ingredient-emoji').value.trim() || '🥕',
@@ -1869,6 +2689,12 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     calories: Number(document.getElementById('ingredient-calories').value)||0,
     gramsPerCup: Number(document.getElementById('ingredient-density').value)||0,
     packaged: document.getElementById('ingredient-packaged').checked,
+    isSpice: document.getElementById('ingredient-is-spice').checked,
+    // This modal never edits blend composition — preserve it as-is so saving a regular
+    // ingredient edit (setDoc replaces the whole document) can't accidentally wipe out
+    // a spice blend's recipe. The dedicated blend editor owns these fields instead.
+    isBlend: existingIng ? !!existingIng.isBlend : false,
+    blendComponents: existingIng ? (existingIng.blendComponents || []) : [],
     prices
   };
   if (state.editing.ingredientId){
