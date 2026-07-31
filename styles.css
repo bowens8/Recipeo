@@ -151,6 +151,17 @@ input[type="file"]{
 .chip-ing-icon img{width:100%; height:100%; object-fit:cover;}
 .meal-chip .chip-meta{color:var(--ink-soft); font-size:.7rem; margin-top:2px;}
 .meal-chip.leftover{background:var(--mustard-soft); border-color:#e3c479;}
+/* Today's meals are what's actually on deck to cook — make that unmistakable rather
+   than just relying on the day column's border. */
+.day-col.is-today .meal-chip{
+  border-color:var(--brick); background:#fdf1ea; box-shadow:0 0 0 1px var(--brick);
+}
+.day-col.is-today .meal-chip.leftover{background:var(--mustard-soft);}
+.chip-cook-btn{
+  display:block; width:100%; margin-top:7px; padding:6px; border-radius:7px;
+  background:var(--brick); color:#fff; border:none; font-size:.74rem; font-weight:700; cursor:pointer;
+}
+.chip-cook-btn:hover{background:var(--brick-dark);}
 .add-meal-btn{
   border:1.5px dashed var(--paper-line); background:transparent; border-radius:9px;
   padding:8px; font-size:.78rem; color:var(--ink-soft); text-align:center;
@@ -170,7 +181,7 @@ input[type="file"]{
 .rc-fav-btn{
   position:absolute; top:8px; right:8px; z-index:1; width:30px; height:30px; border-radius:50%;
   display:inline-flex; align-items:center; justify-content:center; font-size:1.05rem; line-height:1;
-  background:var(--paper); border:1.5px solid var(--paper-line); color:var(--ink-soft); cursor:pointer;
+  background:var(--paper); border:1.5px solid #c9c9c2; color:#a3a39a; cursor:pointer;
 }
 .rc-fav-btn.active{color:var(--danger); border-color:var(--danger); background:#fdf1f1;}
 .recipe-card h3{font-size:1.05rem; margin-top:14px; margin-bottom:6px; padding-right:26px;}
@@ -318,6 +329,12 @@ input[type="file"]{
 }
 .shopping-total .grand{font-weight:700; color:var(--brick-dark);}
 .shopping-list{display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:10px; align-items:start;}
+.shop-aisle-header{
+  grid-column:1 / -1; font-family:var(--font-display); font-weight:600; font-size:.95rem;
+  color:var(--sage-700); padding:14px 4px 4px; border-bottom:1.5px solid var(--paper-line);
+  margin-bottom:2px;
+}
+.shop-aisle-header:first-child{padding-top:0;}
 .shop-item{
   display:flex; align-items:center; gap:12px; background:var(--paper);
   border:1.5px solid var(--paper-line); border-radius:11px; padding:10px 14px;
@@ -334,8 +351,13 @@ input[type="file"]{
 .shop-item .s-price-block{text-align:right;}
 .shop-item .s-price{font-family:var(--font-body); font-size:.92rem; font-weight:700; color:var(--brick); display:block;}
 .shop-item .s-amount{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-soft); display:block; margin-top:2px;}
-.pantry-qty-edit{display:none; margin-top:5px; font-size:.72rem; color:var(--ink-soft);}
-.shopping-list.mode-active .pantry-qty-edit{display:block;}
+.pantry-qty-edit{
+  display:none; align-items:center; justify-content:flex-end; gap:6px;
+  margin-top:6px; font-size:.72rem; color:var(--ink-soft); white-space:nowrap;
+}
+.shopping-list.mode-active .pantry-qty-edit{display:flex;}
+.pantry-qty-label{flex-shrink:0;}
+.pantry-qty-unit{flex-shrink:0;}
 .pantry-qty-input{
   width:58px; padding:3px 5px; font-family:var(--font-mono); font-size:.78rem;
   border:1.5px solid var(--sage-500); border-radius:5px; background:var(--paper); color:var(--ink);
@@ -562,4 +584,27 @@ input[type="file"]{
   }
   .tab-btn.active{background:var(--brick); color:#fff; border-color:var(--brick);}
   .tab-btn:hover{color:inherit;}
+
+  /* Action-button rows (Sort by / Quick add / Import / + New...) — these were wrapping
+     unpredictably and looking cramped at phone width. Slim the buttons down and let the
+     row scroll sideways if it still doesn't all fit, rather than wrapping into a tall
+     stack. */
+  .panel-head-right{
+    flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
+    gap:8px; width:100%; padding-bottom:2px;
+  }
+  .panel-head-right .btn{padding:8px 12px; font-size:.8rem; white-space:nowrap; flex-shrink:0;}
+  .sort-select-wrap{flex-shrink:0; white-space:nowrap;}
+  .sort-select-wrap select{padding:6px 8px; font-size:.8rem;}
+
+  /* The shopping list and ingredient rows had a fixed minimum width wider than a phone
+     screen, so they silently overflowed to the right — that's what was reading as
+     "off-center, buffer on the left but not the right." Let them use the full width
+     instead of a fixed minimum. */
+  .shopping-list{grid-template-columns:1fr;}
+  .shop-item{flex-wrap:wrap;}
+  .shop-item .s-price-block{flex:1 0 100%; margin-top:8px; padding-left:42px;}
+  .ing-row{grid-template-columns:34px 1fr 62px 78px 24px; gap:6px; padding:8px 10px;}
+  .base-spice-list{grid-template-columns:1fr;}
+  .pantry-list{grid-template-columns:1fr;}
 }
