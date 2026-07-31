@@ -1910,6 +1910,12 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
         <div class="import-resolve-combo hidden">
           ${ingredientComboHtml(`class="import-resolve-existing-id" value=""`)}
         </div>
+        <div class="import-resolve-photo-row">
+          <img class="import-resolve-photo-thumb hidden" alt="" />
+          <label>Photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span>
+            <input type="file" accept="image/*" class="import-resolve-photo-input" data-idx="${idx}" />
+          </label>
+        </div>
       </div>`;
     }
     return `<div class="cook-ing-item">
@@ -1946,6 +1952,24 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
         hiddenInput.value = existingId;
         searchInput.value = state.ingredients[existingId] ? state.ingredients[existingId].name : '';
       });
+    });
+    const photoInput = rowEl.querySelector('.import-resolve-photo-input');
+    photoInput.addEventListener('change', async (e)=>{
+      const file = e.target.files[0];
+      if (!file) return;
+      const idx = Number(photoInput.dataset.idx);
+      try{
+        const rawDataUrl = await readFileAsRawDataUrl(file);
+        await openCropper(rawDataUrl, 1, 240, 0.8, (croppedDataUrl)=>{
+          resolved[idx].photo = croppedDataUrl;
+          const thumb = rowEl.querySelector('.import-resolve-photo-thumb');
+          thumb.src = croppedDataUrl;
+          thumb.classList.remove('hidden');
+        });
+      } catch(err){
+        toast("Couldn't read that image");
+      }
+      photoInput.value = '';
     });
   });
 
@@ -2000,11 +2024,11 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
           // specific, and can include pricing/aisle/density data the built-in list
           // doesn't have at all.
           const data = r.detailedMatch
-            ? { ...r.detailedMatch.data, name: r.name, createdAt: serverTimestamp(), needsReview: false }
+            ? { ...r.detailedMatch.data, name: r.name, photo: r.photo || null, createdAt: serverTimestamp(), needsReview: false }
             : {
                 name: r.name,
                 emoji: r.common ? r.common.emoji : '🛒',
-                photo: null,
+                photo: r.photo || null,
                 unit: r.common ? r.common.unit : r.unit,
                 isCustomUnit: false,
                 customUnits: [],
@@ -2879,24 +2903,38 @@ function renderIngredients(){
   }
 
   const sortMode = document.getElementById('ingredient-sort-select').value || 'name-asc';
-  entries = entries.slice().sort(([, a], [, b]) => {
+  entries = entries.slice().sort(([idA, a], [idB, b]) => {
     switch (sortMode){
       case 'name-desc': return (b.name||'').localeCompare(a.name||'');
       case 'newest': return ingredientCreatedAtMillis(b) - ingredientCreatedAtMillis(a);
       case 'oldest': return ingredientCreatedAtMillis(a) - ingredientCreatedAtMillis(b);
       case 'calories-desc': return (Number(b.calories)||0) - (Number(a.calories)||0);
       case 'calories-asc': return (Number(a.calories)||0) - (Number(b.calories)||0);
+      case 'aisle': {
+        const orderDelta = GROCERY_CATEGORY_ORDER.indexOf(inferGroceryCategory(a)) - GROCERY_CATEGORY_ORDER.indexOf(inferGroceryCategory(b));
+        if (orderDelta !== 0) return orderDelta;
+        return (a.name||'').localeCompare(b.name||'');
+      }
       case 'name-asc':
       default: return (a.name||'').localeCompare(b.name||'');
     }
   });
 
+  let lastAisleCategory = null;
   container.innerHTML = entries.map(([id, ing])=>{
+    let aisleHeaderHtml = '';
+    if (sortMode === 'aisle'){
+      const cat = inferGroceryCategory(ing);
+      if (cat !== lastAisleCategory){
+        lastAisleCategory = cat;
+        aisleHeaderHtml = `<div class="shop-aisle-header">${escapeHtml(cat)}</div>`;
+      }
+    }
     const calSpan = ing.needsReview
       ? `<span class="ir-cal ir-cal-warning" title="Auto-created without real data — click to fill it in">⚠️ needs data</span>`
       : `<span class="ir-cal" title="${formatQty(ing.calories||0)} kcal">${formatQty(ing.calories||0)} kcal</span>`;
     const status = ingredientCompletenessStatus(ing);
-    return `<div class="ing-row${ing.needsReview ? ' needs-review' : ''}" data-id="${id}">
+    return `${aisleHeaderHtml}<div class="ing-row${ing.needsReview ? ' needs-review' : ''}" data-id="${id}">
       <span class="ir-emoji">${ingredientIconHtml(ing)}</span>
       <span class="ir-name" title="${escapeHtml(ing.name)}">${escapeHtml(ing.name)}</span>
       <span class="ir-unit" title="per ${escapeHtml(UNIT_LABEL[ing.unit]||ing.unit)}">per ${UNIT_LABEL[ing.unit]||ing.unit}</span>
