@@ -373,6 +373,11 @@ input[type="file"]{
 }
 .import-status-badge.matched{background:var(--sage-100); color:var(--sage-700);}
 .import-status-badge.new{background:var(--mustard-soft); color:var(--brick-dark);}
+.import-status-badge.detailed{background:var(--sage-100); color:var(--sage-700);}
+.import-detailed-summary{
+  font-size:.76rem; color:var(--sage-700); background:var(--sage-50); border:1px dashed var(--paper-line);
+  border-radius:8px; padding:6px 10px; margin:-4px 0 10px;
+}
 
 .import-resolve-row{
   margin:-4px 0 12px; padding:10px 12px; background:var(--sage-50); border:1.5px dashed var(--paper-line);
