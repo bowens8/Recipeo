@@ -161,6 +161,48 @@ function lookupCommonIngredient(name){
   if (singular && COMMON_INGREDIENTS[singular]) return COMMON_INGREDIENTS[singular];
   return null;
 }
+
+/* ============================================================
+   GROCERY AISLE CATEGORIES — for grouping the shopping list the way a store is laid
+   out. Category is inferred from the ingredient's own isSpice/isBlend flags (already
+   tracked, and reliable) plus keyword matching on the name, with a manual override
+   field ("category") the person can set on the ingredient if the guess is wrong.
+   ============================================================ */
+const GROCERY_CATEGORY_ORDER = [
+  'Produce', 'Meat & Seafood', 'Dairy & Eggs', 'Bakery', 'Frozen',
+  'Pantry & Dry Goods', 'Canned Goods', 'Condiments & Sauces',
+  'Spices & Seasonings', 'Beverages', 'Other'
+];
+const GROCERY_CATEGORY_KEYWORDS = {
+  'Produce': ['apple','banana','orange','lemon','lime','grape','berry','strawberr','blueberr',
+    'raspberr','melon','pear','peach','plum','mango','pineapple','avocado','tomato','onion',
+    'garlic','potato','carrot','celery','broccoli','cauliflower','spinach','lettuce','kale',
+    'cabbage','cucumber','zucchini','squash','pepper','mushroom','corn','scallion','shallot',
+    'ginger','cilantro','parsley','basil','mint','dill','rosemary','thyme','fruit','vegetable',
+    'herb'],
+  'Meat & Seafood': ['chicken','beef','pork','turkey','lamb','bacon','sausage','ham','steak',
+    'fish','salmon','tuna','shrimp','crab','lobster','scallop','cod','tilapia','meat','cutlet'],
+  'Dairy & Eggs': ['milk','cheese','yogurt','butter','cream','egg','buttermilk'],
+  'Bakery': ['bread','bagel','tortilla','bun','roll','baguette','pita','naan','muffin','croissant'],
+  'Frozen': ['frozen','ice cream'],
+  'Canned Goods': ['canned','broth','stock','tomato sauce','tomato paste'],
+  'Condiments & Sauces': ['ketchup','mustard','mayo','soy sauce','hot sauce','salad dressing',
+    'oil','vinegar','bbq sauce','sauce','syrup','honey','jam','jelly','peanut butter'],
+  'Beverages': ['juice','soda','coffee','tea','wine','beer','sparkling water'],
+  'Pantry & Dry Goods': ['flour','sugar','rice','pasta','oat','cereal','bean','lentil','quinoa',
+    'bread crumb','breadcrumb','baking powder','baking soda','yeast','cornstarch','panko'],
+};
+function inferGroceryCategory(ing){
+  if (ing.category) return ing.category; // manual override always wins
+  if (ing.isSpice || ing.isBlend) return 'Spices & Seasonings';
+  const name = (ing.name||'').toLowerCase();
+  for (const cat of GROCERY_CATEGORY_ORDER){
+    const keywords = GROCERY_CATEGORY_KEYWORDS[cat];
+    if (keywords && keywords.some(k => name.includes(k))) return cat;
+  }
+  return 'Other';
+}
+
 state.storeSettings = STORES.reduce((o,s)=> (o[s]=true, o), {}); // which stores are "in play"
 
 /* ============================================================
@@ -967,6 +1009,24 @@ function renderWeekPlan(){
 
       chip.innerHTML = `<div class="chip-title">${titleHtml}</div>
         <div class="chip-meta">${metaText}</div>`;
+      if (m.type === 'cook' && state.recipes[m.recipeId]){
+        const cookBtn = document.createElement('button');
+        cookBtn.type = 'button';
+        cookBtn.className = 'chip-cook-btn';
+        cookBtn.textContent = '🍳 Cook this';
+        cookBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          try{
+            const missing = missingIngredientsForRecipe(state.recipes[m.recipeId]);
+            if (missing.length === 0) openCookMode(m.recipeId);
+            else openMissingIngredientsModal(m.recipeId, missing);
+          } catch(err){
+            console.error('Cook from week plan failed:', err);
+            toast("Couldn't open that — see console for details");
+          }
+        });
+        chip.appendChild(cookBtn);
+      }
       chip.addEventListener('click', ()=> openMealModal(dateStr, m.id));
       dayCol.appendChild(chip);
     });
@@ -1303,9 +1363,32 @@ function renderShoppingList(){
   let missingPriceCount = 0;
   const anyStoresOn = STORES.some(s => state.storeSettings[s]);
 
+  const shopSortMode = document.getElementById('shopping-sort-select').value || 'default';
+  if (shopSortMode === 'alpha'){
+    rows.sort(([idA],[idB]) => (state.ingredients[idA]?.name||'').localeCompare(state.ingredients[idB]?.name||''));
+  } else if (shopSortMode === 'aisle'){
+    rows.sort(([idA],[idB]) => {
+      const ingA = state.ingredients[idA], ingB = state.ingredients[idB];
+      const catA = ingA ? inferGroceryCategory(ingA) : 'Other';
+      const catB = ingB ? inferGroceryCategory(ingB) : 'Other';
+      const orderDelta = GROCERY_CATEGORY_ORDER.indexOf(catA) - GROCERY_CATEGORY_ORDER.indexOf(catB);
+      if (orderDelta !== 0) return orderDelta;
+      return (ingA?.name||'').localeCompare(ingB?.name||'');
+    });
+  }
+
+  let lastAisleCategory = null;
   const itemsHtml = rows.map(([id, baseQty]) => {
     const ing = state.ingredients[id];
     if (!ing) return '';
+    let aisleHeaderHtml = '';
+    if (shopSortMode === 'aisle'){
+      const cat = inferGroceryCategory(ing);
+      if (cat !== lastAisleCategory){
+        lastAisleCategory = cat;
+        aisleHeaderHtml = `<div class="shop-aisle-header">${escapeHtml(cat)}</div>`;
+      }
+    }
     const category = unitCategory(ing.unit);
     const neededQtyInIngUnit = baseQty / (toBaseUnit(1, ing.unit) || 1);
 
@@ -1349,7 +1432,7 @@ function renderShoppingList(){
     }
 
     const breakdown = ing.isBlend ? blendBreakdownHtml(ing, neededQtyInIngUnit) : '';
-    return `<div class="shop-item-wrap">
+    return `${aisleHeaderHtml}<div class="shop-item-wrap">
       <label class="shop-item" data-ing="${id}">
         <input type="checkbox" class="shop-check" data-ing="${id}" />
         <span class="s-emoji">${ingredientIconHtml(ing)}</span>
@@ -1358,7 +1441,9 @@ function renderShoppingList(){
           ${priceHtml}
           <span class="${amountClass}">${amountHtml}</span>
           <span class="pantry-qty-edit">
-            Bought: <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" /> ${UNIT_LABEL[ing.unit]||ing.unit}
+            <span class="pantry-qty-label">Bought:</span>
+            <input type="number" class="pantry-qty-input" value="${formatQty(pantryQty)}" step="any" min="0" data-ing="${id}" />
+            <span class="pantry-qty-unit">${UNIT_LABEL[ing.unit]||ing.unit}</span>
           </span>
         </span>
       </label>
@@ -1567,6 +1652,7 @@ function renderRecipes(){
   });
 }
 document.getElementById('recipe-sort-select').addEventListener('change', renderRecipes);
+document.getElementById('shopping-sort-select').addEventListener('change', renderShoppingList);
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
 
@@ -2782,6 +2868,7 @@ function openIngredientModal(ingId, opts){
   document.getElementById('ingredient-density').value = ing.gramsPerCup ?? '';
   document.getElementById('ingredient-grams-per-each').value = ing.gramsPerEach ?? '';
   document.getElementById('ingredient-is-spice').checked = !!ing.isSpice;
+  document.getElementById('ingredient-category').value = ing.category || '';
   hideAutofillSuggestion();
 
   const unitSelect = document.getElementById('ingredient-unit');
@@ -3034,6 +3121,7 @@ document.getElementById('save-ingredient-btn').addEventListener('click', async (
     gramsPerEach: Number(document.getElementById('ingredient-grams-per-each').value)||0,
     packaged: document.getElementById('ingredient-packaged').checked,
     isSpice: document.getElementById('ingredient-is-spice').checked,
+    category: document.getElementById('ingredient-category').value || '',
     // This modal never edits blend composition — preserve it as-is so saving a regular
     // ingredient edit (setDoc replaces the whole document) can't accidentally wipe out
     // a spice blend's recipe. The dedicated blend editor owns these fields instead.
