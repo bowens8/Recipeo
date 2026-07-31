@@ -281,9 +281,18 @@ function parseRecipeImportText(text){
   const HEADERS = ['TITLE','SERVINGS','INGREDIENTS','PANTRY ITEMS','INSTRUCTIONS'];
   const sections = { TITLE:[], SERVINGS:[], INGREDIENTS:[], 'PANTRY ITEMS':[], INSTRUCTIONS:[] };
   let current = null;
+  // A recipe import can optionally have full "INGREDIENT" detail blocks (the same
+  // format the detailed ingredient importer uses) appended after the recipe itself —
+  // once we see a bare "INGREDIENT" line, everything from there on belongs to that,
+  // not to whatever recipe section came before it (otherwise it'd get swallowed into
+  // INSTRUCTIONS as garbage steps).
+  const detailLines = [];
+  let inDetails = false;
   for (const line of lines){
     if (!line) continue;
     const upper = line.toUpperCase();
+    if (!inDetails && upper === 'INGREDIENT') inDetails = true;
+    if (inDetails){ detailLines.push(line); continue; }
     if (HEADERS.includes(upper)){ current = upper; continue; }
     if (current) sections[current].push(line);
   }
@@ -302,7 +311,9 @@ function parseRecipeImportText(text){
     else if (steps.length) steps[steps.length-1] += ' ' + line; // wrapped continuation line
   });
 
-  return { name, baseServings, ingredients, steps, hasAnyContent: !!(name || ingredients.length || steps.length) };
+  const ingredientDetails = detailLines.length ? parseIngredientImportText(detailLines.join('\n')) : [];
+
+  return { name, baseServings, ingredients, steps, ingredientDetails, hasAnyContent: !!(name || ingredients.length || steps.length) };
 }
 
 /* ============================================================
@@ -317,6 +328,16 @@ function parseRecipeImportText(text){
 function canonicalStoreName(raw){
   const normalized = raw.replace(/_/g,' ').trim().toLowerCase();
   return STORES.find(s => s.toLowerCase() === normalized) || null;
+}
+// Matches a free-text grocery aisle/category string against our known category list,
+// leniently (case-insensitive, tolerant of "and" vs "&") — returns '' if it doesn't
+// recognize it, so an unrecognized guess doesn't silently become something wrong.
+function normalizeGroceryAisle(raw){
+  if (!raw) return '';
+  const norm = raw.trim().toLowerCase().replace(/\band\b/g, '&').replace(/\s+/g, ' ');
+  const found = GROCERY_CATEGORY_ORDER.find(cat =>
+    cat.toLowerCase().replace(/\band\b/g, '&').replace(/\s+/g, ' ') === norm);
+  return found || '';
 }
 function splitIngredientBlocks(text){
   const lines = text.split(/\r?\n/).map(l => l.trim());
@@ -431,6 +452,7 @@ function buildIngredientDataFromBlock(block){
     isSpice: false,
     isBlend: false,
     blendComponents: [],
+    category: normalizeGroceryAisle(kv.grocery_aisle || kv.aisle),
     prices
   };
 }
@@ -1818,24 +1840,52 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
     return;
   }
 
-  // Resolve each parsed ingredient to an existing match or "will create new"
+  // Resolve each parsed ingredient to an existing match, a detailed-data block from
+  // this same import, or "will create new" with just common-database defaults.
   const resolved = parsed.ingredients.map(ing => {
     const existingId = findExistingIngredientIdByName(ing.name);
-    const common = existingId ? null : lookupCommonIngredient(ing.name);
-    return { ...ing, existingId, common };
+    let detailedMatch = null;
+    if (!existingId && parsed.ingredientDetails.length){
+      const exact = parsed.ingredientDetails.find(d => d.name.trim().toLowerCase() === ing.name.trim().toLowerCase());
+      if (exact){
+        detailedMatch = exact;
+      } else {
+        let best = null, bestScore = 0;
+        parsed.ingredientDetails.forEach(d => {
+          const score = fuzzyNameSimilarity(ing.name, d.name);
+          if (score > bestScore){ bestScore = score; best = d; }
+        });
+        if (best && bestScore >= 0.5) detailedMatch = best;
+      }
+    }
+    const common = (existingId || detailedMatch) ? null : lookupCommonIngredient(ing.name);
+    return { ...ing, existingId, common, detailedMatch };
   });
   state.editing.pendingImport = { name: parsed.name, baseServings: parsed.baseServings, steps: parsed.steps, resolved };
 
   document.getElementById('import-preview-title').textContent = parsed.name || '(no title found)';
   const newCount = resolved.filter(r => !r.existingId).length;
+  const detailedCount = resolved.filter(r => !r.existingId && r.detailedMatch).length;
   document.getElementById('import-preview-meta').textContent =
-    `Makes ${parsed.baseServings} servings · ${resolved.length} ingredient${resolved.length!==1?'s':''} (${newCount} new) · ${parsed.steps.length} step${parsed.steps.length!==1?'s':''}`;
+    `Makes ${parsed.baseServings} servings · ${resolved.length} ingredient${resolved.length!==1?'s':''} `
+    + `(${newCount} new${detailedCount ? `, ${detailedCount} with full nutrition/pricing data` : ''}) · `
+    + `${parsed.steps.length} step${parsed.steps.length!==1?'s':''}`;
 
   document.getElementById('import-preview-ingredients').innerHTML = resolved.map((r, idx) => {
-    const icon = r.existingId ? ingredientIconHtml(state.ingredients[r.existingId]) : (r.common ? r.common.emoji : '🛒');
-    const badge = r.existingId
-      ? `<span class="import-status-badge matched">matched</span>`
-      : `<span class="import-status-badge new">new ingredient</span>`;
+    const icon = r.existingId ? ingredientIconHtml(state.ingredients[r.existingId])
+      : (r.detailedMatch ? r.detailedMatch.data.emoji : (r.common ? r.common.emoji : '🛒'));
+    let badge;
+    if (r.existingId) badge = `<span class="import-status-badge matched">matched</span>`;
+    else if (r.detailedMatch) badge = `<span class="import-status-badge detailed">new — full data</span>`;
+    else badge = `<span class="import-status-badge new">new ingredient</span>`;
+    const detailedSummary = (!r.existingId && r.detailedMatch) ? (() => {
+      const d = r.detailedMatch.data;
+      const storeCount = Object.keys(d.prices||{}).length;
+      const bits = [`${formatQty(d.calories)} kcal/g`];
+      if (d.category) bits.push(d.category);
+      if (storeCount) bits.push(`priced at ${storeCount} store${storeCount>1?'s':''}`);
+      return `<div class="import-detailed-summary">📋 ${escapeHtml(bits.join(' · '))}</div>`;
+    })() : '';
     let resolveControls = '';
     if (!r.existingId){
       const similar = findSimilarIngredients(r.name, 3);
@@ -1867,7 +1917,7 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
       <span class="cook-ing-name">${escapeHtml(r.name)}${r.approximate ? ' <span class="hint" style="display:inline;">(amount not given in text)</span>' : ''}</span>
       <span class="cook-ing-qty">${formatQty(r.qty)} ${UNIT_LABEL[r.unit]||r.unit}</span>
       ${badge}
-    </div>${resolveControls}`;
+    </div>${detailedSummary}${resolveControls}`;
   }).join('');
 
   // Wire up the "create new" / "use existing" toggle and its search box for every
@@ -1945,26 +1995,32 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
         if (newlyCreatedByName[key]){
           ingredientId = newlyCreatedByName[key];
         } else {
-          const data = {
-            name: r.name,
-            emoji: r.common ? r.common.emoji : '🛒',
-            photo: null,
-            unit: r.common ? r.common.unit : r.unit,
-            isCustomUnit: false,
-            customUnits: [],
-            calories: r.common ? r.common.calories : 0,
-            gramsPerCup: 0,
-            packaged: false,
-            isSpice: false,
-            isBlend: false,
-            blendComponents: [],
-            prices: {},
-            createdAt: serverTimestamp(),
-            // No matching entry in the built-in common-ingredients database means this
-            // was created blind — no real calories, no price. Flag it so it's obvious
-            // on the Ingredients tab that it needs a human to fill it in.
-            needsReview: !r.common
-          };
+          // A full INGREDIENT detail block for this ingredient (from the same paste)
+          // takes priority over the built-in common-ingredients database — it's more
+          // specific, and can include pricing/aisle/density data the built-in list
+          // doesn't have at all.
+          const data = r.detailedMatch
+            ? { ...r.detailedMatch.data, name: r.name, createdAt: serverTimestamp(), needsReview: false }
+            : {
+                name: r.name,
+                emoji: r.common ? r.common.emoji : '🛒',
+                photo: null,
+                unit: r.common ? r.common.unit : r.unit,
+                isCustomUnit: false,
+                customUnits: [],
+                calories: r.common ? r.common.calories : 0,
+                gramsPerCup: 0,
+                packaged: false,
+                isSpice: false,
+                isBlend: false,
+                blendComponents: [],
+                prices: {},
+                createdAt: serverTimestamp(),
+                // No matching entry in the built-in common-ingredients database means
+                // this was created blind — no real calories, no price. Flag it so it's
+                // obvious on the Ingredients tab that it needs a human to fill it in.
+                needsReview: !r.common
+              };
           const docRef = await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), data);
           ingredientId = docRef.id;
           state.ingredients[ingredientId] = data;
@@ -2057,6 +2113,7 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
       </div>
       <div class="import-ing-detail-list">
         <span><strong>Calories:</strong> ${formatQty(r.data.calories)} kcal/g</span>
+        ${r.data.category ? `<span><strong>Grocery aisle:</strong> ${escapeHtml(r.data.category)}</span>` : ''}
         ${r.data.gramsPerCup ? `<span><strong>Grams per cup:</strong> ${formatQty(r.data.gramsPerCup)} g (lets recipes use plain "cup" too)</span>` : ''}
         ${customUnitLines ? `<span><strong>Custom units:</strong> ${escapeHtml(customUnitLines)}</span>` : ''}
         ${r.data.packaged ? `<span><strong>Packaged:</strong> yes</span>` : ''}
@@ -2128,7 +2185,8 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
           // Only overwrite an existing density value if this import actually provided
           // one — otherwise a re-import with no DENSITY_CONVERSION section would
           // silently erase a value someone had set by hand.
-          gramsPerCup: r.data.gramsPerCup || existing.gramsPerCup || 0
+          gramsPerCup: r.data.gramsPerCup || existing.gramsPerCup || 0,
+          category: r.data.category || existing.category || ''
         };
         await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, r.existingId), merged);
         updated++;
