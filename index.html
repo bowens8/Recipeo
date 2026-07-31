@@ -444,7 +444,9 @@ cheddar cheese"></textarea>
         <details class="import-prompt-details">
           <summary>📋 Don't have the text yet? Get a ready-to-use prompt for Claude</summary>
           <p class="hint">Copy this, paste it into a new message to Claude along with a recipe URL, then paste
-            whatever Claude sends back into the box below.</p>
+            whatever Claude sends back into the box below. It also researches full nutrition, pricing, and
+            grocery-aisle data for the recipe's ingredients — any new ones get created with that data filled
+            in automatically instead of blank.</p>
           <textarea readonly rows="9" class="import-prompt-text" id="import-recipe-prompt-text">Fetch this recipe page and convert it into this EXACT plain-text format for a
 recipe importer. Output ONLY the formatted text — no commentary before or after,
 no markdown code fences.
@@ -475,6 +477,43 @@ Format rules:
   original wording (condense only if a step is unreasonably long).
 - SERVINGS is a single number. If the source gives a range (e.g. "4-6"), pick
   the lower number.
+
+After the INSTRUCTIONS section, research and append a full data block for EVERY
+distinct ingredient used above (skip only truly bare pantry staples like plain salt,
+pepper, or water) — this lets the importer create each one with real nutrition,
+pricing, and grocery-aisle data instead of a blank placeholder. Leave one blank line
+before each block. Use this exact format per ingredient (same header rule as above —
+each header word is its own bare line, no colon):
+
+INGREDIENT
+name: [must match the name used in the ingredient list above]
+grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
+UNIT_INFORMATION
+standard_unit: [a natural serving/measure unit, e.g. cup_cooked, slice, tbsp]
+standard_unit_weight_g: [grams that one standard_unit weighs]
+calories_per_standard_unit: [calories in one standard_unit]
+DENSITY_CONVERSION
+[zero or more lines like "grams_per_cup_dry: 185" — only if this ingredient is
+ measured by volume in more than one state, or is naturally counted (an onion, an
+ egg) but might be needed by weight/volume elsewhere, in which case add
+ "grams_per_each: [grams one whole item weighs]". Omit this section otherwise.]
+PACKAGE_INFORMATION
+common_package_unit: [e.g. bag, box, jar, dozen]
+units_per_package: [usually 1, unless a package = e.g. "12" if sold by the dozen]
+package_weight_g: [total grams in one typical package]
+PRICE_INFORMATION
+ALDI
+package_price: [your best current estimate in USD]
+package_size_g: [grams in the package this price is for]
+KROGER
+package_price: [...]
+package_size_g: [...]
+GIANT_EAGLE
+package_price: [...]
+package_size_g: [...]
+
+If you can't find a real price at one of the three stores, give your best estimate
+based on similar products — don't skip the store, just estimate.
 
 Recipe URL: [paste your recipe URL here]</textarea>
           <button type="button" class="btn btn-ghost btn-small" id="copy-recipe-prompt-btn">📋 Copy prompt</button>
@@ -567,6 +606,7 @@ NOT "INGREDIENT: Jasmine Rice" or "UNIT_INFORMATION: standard_unit: ...".
 
 INGREDIENT
 name: [the ingredient's common name]
+grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
 UNIT_INFORMATION
 standard_unit: [a natural serving/measure unit, e.g. cup_cooked, slice, tbsp]
 standard_unit_weight_g: [grams that one standard_unit weighs]
