@@ -181,7 +181,9 @@ against your existing library first; anything that doesn't already exist gets cr
 automatically (autofilled from the same built-in database used for Quick Add, where it
 recognizes the name). The preview also has an optional **cover photo** field (with the
 same crop-and-zoom step as everywhere else in the app) if you want to attach one before
-importing. Click **Import recipe** to confirm.
+importing. Every row marked "new ingredient" also gets its own optional **photo**
+upload (same crop-and-zoom step) — attach one right there instead of having to go find
+and edit the ingredient afterward. Click **Import recipe** to confirm.
 
 **Full ingredient data in the same paste.** After the `INSTRUCTIONS` section, you can
 append one or more `INGREDIENT` blocks — the exact same detailed format the ingredient
@@ -230,8 +232,11 @@ Hover any dot for a specific reason (e.g. "Missing a price at: Giant Eagle").
 ## Sorting the ingredient library
 
 The **Sort by** dropdown on the Ingredients tab reorders the list — alphabetically
-(A–Z or Z–A), by when it was added (newest or oldest first), or by calories (high–low
-or low–high). Ingredients that already existed before this feature was added get a
+(A–Z or Z–A), by when it was added (newest or oldest first), by calories (high–low
+or low–high), or **Grocery aisle** — the same store-section grouping used on the
+shopping list (Produce, Meat & Seafood, Dairy & Eggs, etc., with a header for each),
+using the same automatic guess (or manual override) described below. Ingredients that
+already existed before this feature was added get a
 one-time automatic backfill the first time you sign in after updating, so date sorting
 works for them too — it's not their real historical creation date (there's no way to
 recover that), but it gives them a stable, consistent order instead of Recently/Oldest
