@@ -263,6 +263,11 @@ Recipes tab reorders the list: alphabetically, favorites first, calories (low–
 
 ## Cook Mode
 
+Today's meals stand out on the Week Plan — their chips get a brick-colored highlight so
+it's obvious what's actually on deck, and every "cook" meal gets a **🍳 Cook this**
+button right on the chip for one tap straight into Cook Mode, no need to open the meal
+first. (Clicking anywhere else on the chip still opens it for editing, same as before.)
+
 Every recipe card has two buttons: **📄 Overview** and **🍳 Cook this**.
 
 **Overview** is a simple single-screen read view — ingredients and steps listed plainly,
@@ -321,6 +326,19 @@ want volume amounts like cups to combine correctly, set **Grams per cup** too, s
 weight is what connects the two. Without Grams per each, "each"-based ingredients can't
 convert to weight or volume at all, so a recipe using the wrong unit for one will show
 up as unconverted on the shopping list even with Grams per cup filled in.
+
+## Sorting the shopping list
+
+The **Sort by** dropdown above the shopping list has three options: **Recommended**
+(the default order), **Alphabetical**, or **Grocery aisle** — groups everything into
+sections roughly matching a store's layout (Produce, Meat & Seafood, Dairy & Eggs,
+Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices &
+Seasonings, Beverages, Other) in that walking order, with a header for each section.
+
+The category is guessed automatically — spices/blends always land in Spices &
+Seasonings (using the flag already set on the Spices tab), everything else is guessed
+from the ingredient's name. If a guess is wrong, set **Grocery aisle** on that
+ingredient's edit screen to override it permanently.
 
 ## Custom units (e.g. cloves ↔ bulbs)
 
