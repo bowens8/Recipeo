@@ -49,6 +49,7 @@
       <button class="tab-btn active" data-tab="plan">Week Plan</button>
       <button class="tab-btn" data-tab="shopping">Shopping List</button>
       <button class="tab-btn" data-tab="recipes">Recipes</button>
+      <button class="tab-btn" data-tab="baking">Baking</button>
       <button class="tab-btn" data-tab="pantry">Pantry</button>
       <button class="tab-btn" data-tab="ingredients">Ingredients</button>
       <button class="tab-btn" data-tab="spices">Spices</button>
@@ -117,6 +118,28 @@
         </div>
       </div>
       <div id="recipe-list" class="card-grid"></div>
+    </section>
+
+    <!-- ---------- BAKING TAB ---------- -->
+    <section id="tab-baking" class="tab-panel">
+      <div class="panel-head">
+        <h2>Baking</h2>
+        <div class="panel-head-right">
+          <label class="sort-select-wrap">Sort by
+            <select id="baking-sort-select">
+              <option value="name-asc">Name (A–Z)</option>
+              <option value="favorites">Favorites first</option>
+              <option value="calories-asc">Calories (low–high)</option>
+              <option value="fewest-missing">Fewest missing from pantry</option>
+            </select>
+          </label>
+          <button id="import-baking-btn" class="btn btn-ghost">📄 Import from text</button>
+          <button id="new-baking-btn" class="btn btn-primary">+ New baking recipe</button>
+        </div>
+      </div>
+      <p class="panel-sub" style="margin:-14px 0 14px;">Same recipes, same ingredient library, same everything —
+        just kept separate from your regular recipes.</p>
+      <div id="baking-list" class="card-grid"></div>
     </section>
 
     <!-- ---------- PANTRY TAB ---------- -->
@@ -198,6 +221,10 @@
       </label>
       <label class="label-inline">Base servings
         <input type="number" id="recipe-servings" min="1" value="4" style="width:80px" />
+      </label>
+      <label class="checkbox-inline">
+        <input type="checkbox" id="recipe-is-baking" />
+        This is a baking recipe — show it on the Baking tab instead of Recipes
       </label>
 
       <h4>Ingredients</h4>
