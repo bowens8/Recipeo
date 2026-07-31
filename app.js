@@ -1564,15 +1564,15 @@ function missingIngredientsForRecipe(r){
   return missing;
 }
 
-function renderRecipes(){
-  const container = document.getElementById('recipe-list');
-  let entries = Object.entries(state.recipes);
+function renderRecipeCardsInto(containerId, sortSelectId, filterFn, emptyMessage){
+  const container = document.getElementById(containerId);
+  let entries = Object.entries(state.recipes).filter(([, r]) => filterFn(r));
   if (entries.length===0){
-    container.innerHTML = '<p class="shop-empty">No recipes yet. Click "+ New recipe" to add your first one.</p>';
+    container.innerHTML = `<p class="shop-empty">${emptyMessage}</p>`;
     return;
   }
 
-  const sortMode = document.getElementById('recipe-sort-select').value || 'name-asc';
+  const sortMode = document.getElementById(sortSelectId).value || 'name-asc';
   entries = entries.slice().sort(([idA, a], [idB, b]) => {
     switch (sortMode){
       case 'favorites': {
@@ -1651,10 +1651,18 @@ function renderRecipes(){
     });
   });
 }
+function renderRecipes(){
+  renderRecipeCardsInto('recipe-list', 'recipe-sort-select', r => !r.isBaking,
+    'No recipes yet. Click "+ New recipe" to add your first one.');
+  renderRecipeCardsInto('baking-list', 'baking-sort-select', r => !!r.isBaking,
+    'No baking recipes yet. Click "+ New baking recipe" to add your first one.');
+}
 document.getElementById('recipe-sort-select').addEventListener('change', renderRecipes);
+document.getElementById('baking-sort-select').addEventListener('change', renderRecipes);
 document.getElementById('shopping-sort-select').addEventListener('change', renderShoppingList);
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
+document.getElementById('new-baking-btn').addEventListener('click', ()=> openRecipeModal(null, { presetBaking: true }));
 
 /* ============================================================
    RECIPE TEXT IMPORTER — modal wiring
@@ -1718,6 +1726,18 @@ document.getElementById('copy-recipe-prompt-btn').addEventListener('click', ()=>
 document.getElementById('copy-ing-prompt-btn').addEventListener('click', ()=> copyPromptTextarea('import-ing-prompt-text'));
 
 document.getElementById('import-recipe-btn').addEventListener('click', ()=>{
+  state.editing.importTargetIsBaking = false;
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-paste-step').classList.remove('hidden');
+  document.getElementById('import-preview-step').classList.add('hidden');
+  state.editing.pendingImportCover = null;
+  document.getElementById('import-recipe-cover-input').value = '';
+  setImportRecipeCoverPreview(null);
+  openModal('import-recipe-modal');
+});
+document.getElementById('import-baking-btn').addEventListener('click', ()=>{
+  state.editing.importTargetIsBaking = true;
   document.getElementById('import-textarea').value = '';
   document.getElementById('import-file-input').value = '';
   document.getElementById('import-paste-step').classList.remove('hidden');
@@ -1940,7 +1960,8 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
       baseServings: pending.baseServings || 1,
       ingredients: recipeIngredients,
       steps: pending.steps.map(text => ({ text, photo: null })),
-      coverPhoto: state.editing.pendingImportCover || null
+      coverPhoto: state.editing.pendingImportCover || null,
+      isBaking: !!state.editing.importTargetIsBaking
     };
     await addDoc(sharedCol(SHARED_RECIPES_COLLECTION), recipeData);
 
@@ -2264,13 +2285,15 @@ const recipeCoverInput = document.getElementById('recipe-cover-input');
 const recipeCoverPreview = document.getElementById('recipe-cover-preview');
 const recipeCoverImg = document.getElementById('recipe-cover-img');
 
-function openRecipeModal(recipeId){
+function openRecipeModal(recipeId, opts){
+  opts = opts || {};
   state.editing.recipeId = recipeId;
-  const r = recipeId ? state.recipes[recipeId] : { name:'', baseServings:4, ingredients:[], steps:[], coverPhoto:null };
+  const r = recipeId ? state.recipes[recipeId] : { name:'', baseServings:4, ingredients:[], steps:[], coverPhoto:null, isBaking: !!opts.presetBaking };
 
-  document.getElementById('recipe-modal-title').textContent = recipeId ? 'Edit recipe' : 'New recipe';
+  document.getElementById('recipe-modal-title').textContent = recipeId ? 'Edit recipe' : (opts.presetBaking ? 'New baking recipe' : 'New recipe');
   document.getElementById('recipe-name').value = r.name || '';
   document.getElementById('recipe-servings').value = r.baseServings || 4;
+  document.getElementById('recipe-is-baking').checked = !!r.isBaking;
 
   state.editing.recipeCover = r.coverPhoto || null;
   recipeCoverInput.value = '';
@@ -2665,7 +2688,11 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
     photo: row._photoData || null
   })).filter(s => s.text || s.photo);
 
-  const data = { name, baseServings, ingredients, steps, coverPhoto: state.editing.recipeCover || null };
+  const data = {
+    name, baseServings, ingredients, steps,
+    coverPhoto: state.editing.recipeCover || null,
+    isBaking: document.getElementById('recipe-is-baking').checked
+  };
 
   const btn = document.getElementById('save-recipe-btn');
   if (btn.disabled) return; // guard against a double-click firing two saves
