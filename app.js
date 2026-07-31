@@ -777,6 +777,26 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  document.getElementById('mobile-tab-toggle-label').textContent = btn.textContent;
+  closeMobileTabMenu();
+});
+
+// Mobile dropdown: tap to open/close, tap a tab or click outside to close.
+function closeMobileTabMenu(){
+  document.getElementById('tabs').classList.remove('mobile-open');
+  document.getElementById('mobile-tab-toggle').setAttribute('aria-expanded', 'false');
+}
+document.getElementById('mobile-tab-toggle').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  const tabs = document.getElementById('tabs');
+  const isOpen = tabs.classList.toggle('mobile-open');
+  document.getElementById('mobile-tab-toggle').setAttribute('aria-expanded', String(isOpen));
+});
+document.addEventListener('click', (e)=>{
+  const tabs = document.getElementById('tabs');
+  if (!tabs.classList.contains('mobile-open')) return;
+  if (e.target.closest('#tabs') || e.target.closest('#mobile-tab-toggle')) return;
+  closeMobileTabMenu();
 });
 
 /* ============================================================
