@@ -76,10 +76,17 @@
       <div class="panel-head">
         <h2>Shopping List</h2>
         <div class="panel-head-right">
-          <span class="panel-sub">For the week shown in Week Plan — pantry items already subtracted.</span>
+          <label class="sort-select-wrap">Sort by
+            <select id="shopping-sort-select">
+              <option value="default">Recommended</option>
+              <option value="alpha">Alphabetical</option>
+              <option value="aisle">Grocery aisle</option>
+            </select>
+          </label>
           <button id="shopping-mode-btn" class="btn btn-ghost">Start Shopping</button>
         </div>
       </div>
+      <p class="panel-sub" style="margin:-14px 0 14px;">For the week shown in Week Plan — pantry items already subtracted.</p>
       <div class="store-picker">
         <span class="store-picker-label">Shop from:</span>
         <div id="store-checks" class="store-checks"></div>
@@ -236,6 +243,22 @@
       <label class="checkbox-inline">
         <input type="checkbox" id="ingredient-is-spice" />
         This is a spice — show it on the Spices tab
+      </label>
+      <label>Grocery aisle <span style="font-weight:400;color:var(--ink-soft)">(for grouping the shopping list — leave on Auto unless it's guessing wrong)</span>
+        <select id="ingredient-category">
+          <option value="">Auto-detect</option>
+          <option value="Produce">Produce</option>
+          <option value="Meat & Seafood">Meat & Seafood</option>
+          <option value="Dairy & Eggs">Dairy & Eggs</option>
+          <option value="Bakery">Bakery</option>
+          <option value="Frozen">Frozen</option>
+          <option value="Pantry & Dry Goods">Pantry & Dry Goods</option>
+          <option value="Canned Goods">Canned Goods</option>
+          <option value="Condiments & Sauces">Condiments & Sauces</option>
+          <option value="Spices & Seasonings">Spices & Seasonings</option>
+          <option value="Beverages">Beverages</option>
+          <option value="Other">Other</option>
+        </select>
       </label>
       <div class="field-row">
         <label>Unit
