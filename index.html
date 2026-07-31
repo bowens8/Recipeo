@@ -471,6 +471,18 @@ Format rules:
   Fractions and decimals are both fine. If something has no natural unit, just
   give a count, e.g. "- 2 scallions". If a source ingredient has no amount at
   all (e.g. "salt, to taste"), just write the name with no number, e.g. "- Salt".
+- Strip the name down to just the ingredient itself — no preparation, state, or
+  usage notes attached. Cut off anything like: chopped/diced/minced/sliced/grated/
+  shredded/crushed/cubed, cooled/room temperature/softened/melted/chilled/thawed,
+  "cut into ___ pieces"/halved/quartered, divided, "to taste"/"for garnish"/"for
+  serving"/"as needed", optional, or brand call-outs. Capitalize the result like a
+  normal name. For example: "black coffee, cooled" → "Black Coffee". "onion, finely
+  chopped" → "Onion". "unsalted butter, softened" → "Unsalted Butter". "2 boneless
+  skinless chicken breasts, cut into 1-inch cubes" → keep the "2" and unit as given,
+  but the name becomes "Chicken Breast". Only the qty/unit stay as given — clean
+  the name part specifically. This matters: a name like "black coffee, cooled"
+  won't match anything in an ingredient library or get useful nutrition/pricing
+  data, but "Black Coffee" will.
 - Convert weird/non-standard units into one of: tsp, tbsp, cup, fl oz, oz, lb,
   g, kg, ml, l — pick whichever the source most naturally uses.
 - INSTRUCTIONS are numbered "1.", "2.", etc., one step per line, in the source's
@@ -486,7 +498,7 @@ before each block. Use this exact format per ingredient (same header rule as abo
 each header word is its own bare line, no colon):
 
 INGREDIENT
-name: [must match the name used in the ingredient list above]
+name: [the cleaned ingredient name — must exactly match what you wrote in the ingredient list above, not the raw recipe wording]
 grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
 UNIT_INFORMATION
 standard_unit: [a natural serving/measure unit, e.g. cup_cooked, slice, tbsp]
