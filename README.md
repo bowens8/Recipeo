@@ -89,6 +89,7 @@ at nutrition/pricing data sheets rather than casual entry — paste or upload on
 ```
 INGREDIENT
 name: Jasmine Rice
+grocery_aisle: Pantry & Dry Goods
 UNIT_INFORMATION
 standard_unit: cup_cooked
 standard_unit_weight_g: 158
@@ -117,6 +118,9 @@ This maps directly onto features already in the app, with no separate system und
 
 - The ingredient's base unit becomes grams, and `calories_per_standard_unit ÷
   standard_unit_weight_g` becomes its calories-per-gram.
+- `grocery_aisle` (optional) sets which section of the shopping list's "Grocery aisle"
+  grouping this ingredient lands in — must exactly match one of the categories listed in
+  that section above. Omit it and the app guesses from the name instead.
 - Every `grams_per_X` line under `DENSITY_CONVERSION` becomes a **custom unit** — exactly
   the same custom-unit system used for things like cloves/bulbs — so "cup_dry" and
   "cup_cooked" both become real units you can pick when adding this ingredient to a
@@ -179,17 +183,28 @@ recognizes the name). The preview also has an optional **cover photo** field (wi
 same crop-and-zoom step as everywhere else in the app) if you want to attach one before
 importing. Click **Import recipe** to confirm.
 
+**Full ingredient data in the same paste.** After the `INSTRUCTIONS` section, you can
+append one or more `INGREDIENT` blocks — the exact same detailed format the ingredient
+importer uses (see below), one per ingredient in the recipe. Any ingredient line whose
+name matches one of these blocks (exact or close enough) gets created with real
+calories, pricing, and grocery-aisle data instead of a blank placeholder — the preview
+shows a **"new — full data"** badge and a summary line for these. The built-in prompt
+(open "Don't have the text yet?" in the importer) already asks Claude to research and
+include this for every ingredient, so this happens automatically if you use it — no
+extra step. Ingredients without a matching block still fall back to the common-database
+autofill exactly as before.
+
 Any row marked "new ingredient" also gets a **"Create new ingredient" / "Use an existing
 ingredient instead"** toggle — handy when the recipe's wording doesn't quite match
 something already in your library (e.g. the text says "chicken cutlets" but you already
 have "Chicken Breast Cutlets"). Switch it to the second option and search for the real
 one instead of ending up with a near-duplicate.
 
-Ingredients that do get auto-created without a recognized match (no real calories, no
-price — just a placeholder) show up with a **red "⚠️ needs data" warning** on the
-Ingredients tab afterward, so they're easy to spot and go fill in. The warning clears
-the moment you open and save that ingredient, whether or not you actually change
-anything — saving it is how you tell the app "reviewed."
+Ingredients that do get auto-created without a recognized match or detailed data block
+(no real calories, no price — just a placeholder) show up with a **red "⚠️ needs data"
+warning** on the Ingredients tab afterward, so they're easy to spot and go fill in. The
+warning clears the moment you open and save that ingredient, whether or not you
+actually change anything — saving it is how you tell the app "reviewed."
 
 ## Searchable ingredient picker
 
@@ -347,7 +362,9 @@ Seasonings, Beverages, Other) in that walking order, with a header for each sect
 The category is guessed automatically — spices/blends always land in Spices &
 Seasonings (using the flag already set on the Spices tab), everything else is guessed
 from the ingredient's name. If a guess is wrong, set **Grocery aisle** on that
-ingredient's edit screen to override it permanently.
+ingredient's edit screen to override it permanently. The detailed data importer (see
+below) can also set this directly via a `grocery_aisle` line, which takes priority over
+the automatic guess — the prompt built into that importer already asks for it.
 
 ## Custom units (e.g. cloves ↔ bulbs)
 
