@@ -254,6 +254,15 @@ needed. Quick items count toward that day's calories and toward the shopping lis
 exactly like a recipe ingredient would, combining with any of the same ingredient used
 in actual recipes that week.
 
+## Baking tab
+
+A separate **Baking** tab works identically to Recipes — same shared ingredient
+library, same Cook Mode, same importer, same favorites, same missing-ingredients
+check — it's just a different bucket. Check **"This is a baking recipe"** on a
+recipe's edit screen to move it there instead of the main Recipes tab (creating from
+the Baking tab's own "+ New baking recipe" button checks this automatically, and
+importing from its "📄 Import from text" button tags the result the same way).
+
 ## Favorites & sorting recipes
 
 Tap the ♥ on any recipe card to favorite it (turns red) — favorites are yours alone,
