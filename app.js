@@ -397,17 +397,20 @@ function buildIngredientDataFromBlock(block){
 
   const gramsPerEach = Number(kv.grams_per_each) || 0;
   // If this ingredient is naturally counted (an onion, an egg, a bell pepper) rather
-  // than weighed, use "each" as its base unit instead of grams — nobody actually
-  // thinks of a bell pepper in grams. Everything below (custom units, package size,
-  // pricing) gets expressed in whichever base unit this ends up being, not always g.
+  // than weighed, use "each" as its base unit. Otherwise default to ounces, not
+  // grams — reads naturally on a US shopping list and combines cleanly into lb for
+  // larger amounts via the app's normal unit conversion. Everything below (custom
+  // units, package size, pricing) gets expressed in whichever base unit this ends up
+  // being, not always grams.
+  const OUNCE_IN_GRAMS = 28.3495;
   const useEachBase = gramsPerEach > 0;
-  const baseUnit = useEachBase ? 'each' : 'g';
-  const baseUnitsPerGram = useEachBase ? (1 / gramsPerEach) : 1; // for converting gram-based figures below
+  const baseUnit = useEachBase ? 'each' : 'oz';
+  const baseUnitsPerGram = useEachBase ? (1 / gramsPerEach) : (1 / OUNCE_IN_GRAMS); // for converting gram-based figures below
 
-  const calories = useEachBase ? (caloriesPerGram * gramsPerEach) : caloriesPerGram;
+  const calories = useEachBase ? (caloriesPerGram * gramsPerEach) : (caloriesPerGram * OUNCE_IN_GRAMS);
 
   // DENSITY_CONVERSION: any "grams_per_X" key becomes a custom unit — its factor is
-  // expressed relative to whatever the base unit ended up being (each or g), not
+  // expressed relative to whatever the base unit ended up being (each or oz), not
   // always grams. "each" itself is skipped here since it became the base unit above,
   // not a custom unit alongside it.
   const customUnits = [];
