@@ -274,7 +274,23 @@ function parseImportIngredientLine(raw){
     const common = lookupCommonIngredient(name);
     return { name, qty: 1, unit: common ? common.unit : 'each', approximate: true };
   }
-  return { name, qty, unit: unit || 'each', approximate: false };
+  const converted = convertToAmericanUnitIfMetric(qty, unit || 'each');
+  return { name, qty: converted.qty, unit: converted.unit, approximate: false };
+}
+// Safety net for American units: even with the AI prompt asking for tsp/tbsp/cup/oz/lb,
+// pasted text can still end up with metric units (an older prompt, a source recipe
+// copy-pasted as-is, manual entry). Rather than passing grams/kg/ml/l through
+// untouched, convert to the nearest sensible American unit right here at parse time —
+// this guarantees the result regardless of what the source text actually contains.
+function convertToAmericanUnitIfMetric(qty, unit){
+  if (unit !== 'g' && unit !== 'kg' && unit !== 'ml' && unit !== 'l') return { qty, unit };
+  const category = unitCategory(unit);
+  const baseQty = toBaseUnit(qty, unit);
+  if (baseQty === null || !isFinite(baseQty)) return { qty, unit };
+  // Passing a US-style "preferredUnit" forces pickDisplayUnit to choose from the US
+  // table (oz/lb or cup/fl oz/tbsp/tsp) instead of leaning back into metric.
+  const picked = pickDisplayUnit(baseQty, category, category === 'weight' ? 'oz' : 'cup');
+  return { qty: Math.round(picked.qty * 100) / 100, unit: picked.unit };
 }
 function parseRecipeImportText(text){
   const lines = text.split(/\r?\n/).map(l => l.trim());
