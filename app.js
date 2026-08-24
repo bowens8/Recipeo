@@ -3032,6 +3032,70 @@ function renderIngredients(){
 document.getElementById('ingredient-sort-select').addEventListener('change', renderIngredients);
 
 document.getElementById('new-ingredient-btn').addEventListener('click', ()=> openIngredientModal(null));
+
+/* ============================================================
+   AUTO-FILL MISSING PHOTOS — no API key needed: Wikipedia's public API supports
+   cross-origin requests via origin=*, so we can look up a free thumbnail for any
+   ingredient name directly from the browser. Two steps per ingredient: a fuzzy
+   full-text search to find the best-matching article (tolerant of plurals/wording),
+   then that article's lead image. Not every result will be spot-on for something
+   very specific or branded — it's a starting point, not a guarantee, and never
+   touches an ingredient that already has a photo.
+   ============================================================ */
+async function fetchWikipediaThumbnailFor(name){
+  try{
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&format=json&origin=*&srlimit=1`;
+    const searchRes = await fetch(searchUrl);
+    const searchData = await searchRes.json();
+    const hit = searchData.query && searchData.query.search && searchData.query.search[0];
+    if (!hit) return null;
+
+    const thumbUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(hit.title)}&prop=pageimages&format=json&pithumbsize=240&origin=*`;
+    const thumbRes = await fetch(thumbUrl);
+    const thumbData = await thumbRes.json();
+    const pages = thumbData.query && thumbData.query.pages;
+    if (!pages) return null;
+    const page = Object.values(pages)[0];
+    return (page && page.thumbnail && page.thumbnail.source) || null;
+  } catch(err){
+    return null;
+  }
+}
+document.getElementById('autofill-photos-btn').addEventListener('click', async ()=>{
+  const missing = Object.entries(state.ingredients).filter(([, ing]) => !ing.photo);
+  if (missing.length === 0){ toast('Every ingredient already has a photo'); return; }
+
+  const btn = document.getElementById('autofill-photos-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  toast(`Looking up photos for ${missing.length} ingredient${missing.length!==1?'s':''}…`);
+
+  let found = 0, done = 0;
+  const BATCH_SIZE = 5;
+  try{
+    for (let i = 0; i < missing.length; i += BATCH_SIZE){
+      const batch = missing.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async ([id, ing]) => {
+        const thumb = await fetchWikipediaThumbnailFor(ing.name);
+        done++;
+        btn.textContent = `🖼️ Finding photos… (${done}/${missing.length})`;
+        if (thumb){
+          await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, id), { photo: thumb }, { merge: true });
+          found++;
+        }
+      }));
+    }
+    toast(`Found photos for ${found} of ${missing.length} ingredients — worth a quick look to make sure they're the right ones`);
+  } catch(err){
+    console.error('Auto-fill photos failed:', err);
+    toast("Couldn't finish looking up photos — see console for details");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+});
+
 document.getElementById('new-spice-btn').addEventListener('click', ()=> openIngredientModal(null, { presetSpice: true }));
 
 document.getElementById('bulk-add-btn').addEventListener('click', ()=>{
