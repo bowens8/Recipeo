@@ -262,6 +262,14 @@ input[type="file"]{
 .blend-breakdown-title{font-weight:700; color:var(--sage-700); margin-bottom:4px; display:block;}
 .blend-breakdown-row{display:flex; justify-content:space-between; gap:10px;}
 
+/* recipe ingredient substitute options, shown in Cook Mode / Recipe Overview */
+.ri-sub-display{
+  margin-top:6px; padding:8px 10px; background:var(--mustard-soft); border:1px dashed #e3c479;
+  border-radius:9px; font-size:.78rem; color:var(--brick-dark);
+}
+.ri-sub-display-title{font-weight:700; margin-bottom:4px; display:block;}
+.ri-sub-display-row{display:flex; justify-content:space-between; gap:10px;}
+
 /* ============ Ingredients table ============ */
 .ingredient-table{display:flex; flex-direction:column; gap:6px;}
 .ing-row{
@@ -405,6 +413,9 @@ input[type="file"]{
 .import-ing-photo-row{display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid var(--paper-line);}
 .import-ing-photo-row label{margin:0; flex:1;}
 .import-ing-photo-thumb{width:40px; height:40px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line); flex-shrink:0;}
+.import-resolve-photo-row{display:flex; align-items:center; gap:10px; margin-top:10px;}
+.import-resolve-photo-row label{margin:0; flex:1; font-size:.85rem;}
+.import-resolve-photo-thumb{width:36px; height:36px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line); flex-shrink:0;}
 
 .import-prompt-details{
   background:var(--sage-50); border:1.5px solid var(--paper-line); border-radius:11px;
@@ -493,6 +504,15 @@ input[type="file"]{
 /* ============ Recipe modal internals ============ */
 .recipe-ingredients{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
 .ri-row{display:grid; grid-template-columns:1fr 90px 90px 30px; gap:8px; align-items:center;}
+.ri-row-wrap{margin-bottom:2px;}
+.ri-subs-list{display:flex; flex-direction:column; gap:6px; margin:6px 0 0 22px;}
+.ri-sub-row{display:grid; grid-template-columns:16px 1fr 80px 80px 26px; gap:6px; align-items:center;}
+.ri-sub-label{color:var(--sage-700); font-weight:700; text-align:center;}
+.ri-sub-row .ri-remove{width:22px; height:22px; font-size:.7rem;}
+.ri-add-sub-link{
+  display:block; margin:6px 0 0 22px; background:none; border:none; padding:0;
+  color:var(--sage-700); font-size:.76rem; font-weight:600; text-decoration:underline; cursor:pointer;
+}
 .ri-row select, .ri-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper);}
 .ri-remove{background:transparent; border:none; color:var(--danger); font-size:1.1rem;}
 .recipe-steps{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
