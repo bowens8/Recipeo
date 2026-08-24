@@ -290,6 +290,20 @@ not shared with everyone else using this planner. The **Sort by** dropdown on th
 Recipes tab reorders the list: alphabetically, favorites first, calories (low–high), or
 **fewest missing from pantry** — handy for "what can I basically make right now?"
 
+## Substitute ingredients
+
+Any ingredient in a recipe can have one or more substitutes — click **+ Add substitute**
+under it while editing the recipe, search for the stand-in ingredient, and give it its
+own amount (a substitute doesn't have to be a 1:1 swap in quantity or unit; "1 cup
+buttermilk" and "1 cup plain milk" both work fine as separate amounts). They show up
+wherever that ingredient does — Recipe Overview, Cook Mode's gather list — as a small
+"↔ Substitute with" note underneath.
+
+It's not just informational: if you're out of the original but already have a listed
+substitute in your Pantry in a sufficient amount, the recipe no longer counts that
+ingredient as missing — the Cook button goes straight to "🍳 Cook this" and Cook Mode
+opens directly, skipping the "you're missing something" confirmation entirely.
+
 ## Cook Mode
 
 Today's meals stand out on the Week Plan — their chips get a brick-colored highlight so
