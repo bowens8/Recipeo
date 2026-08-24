@@ -1670,6 +1670,20 @@ document.getElementById('finish-shopping-btn').addEventListener('click', async (
 // {ing, needed, have} for anything short (or entirely missing). Ingredients that can't
 // be compared (deleted ingredient, or a genuine unit-family mismatch) are skipped rather
 // than counted as missing, since we can't honestly say either way.
+// Checks whether any of an ingredient row's listed substitutes is already available
+// in sufficient quantity — returns that substitute's info, or null if none qualify.
+function availableSubstituteFor(subs){
+  if (!subs || !subs.length) return null;
+  for (const sub of subs){
+    const subIng = state.ingredients[sub.ingredientId];
+    if (!subIng) continue;
+    const needed = convertToIngredientUnit(Number(sub.qty)||0, sub.unit, subIng);
+    if (needed === null) continue;
+    const have = Number(state.pantry[sub.ingredientId]?.qty) || 0;
+    if (have + 1e-9 >= needed) return { ing: subIng, needed };
+  }
+  return null;
+}
 function missingIngredientsForRecipe(r){
   const missing = [];
   (r.ingredients||[]).forEach(ri => {
@@ -1679,7 +1693,12 @@ function missingIngredientsForRecipe(r){
     const needed = convertToIngredientUnit(Number(ri.qty)||0, rowUnit, ing);
     if (needed === null) return;
     const have = Number(state.pantry[ri.ingredientId]?.qty) || 0;
-    if (have + 1e-9 < needed) missing.push({ ing, needed, have });
+    if (have + 1e-9 < needed){
+      // Short on the original, but if a listed substitute is already in stock,
+      // that's not actually a blocker to cooking — don't count it as missing.
+      if (availableSubstituteFor(ri.subs)) return;
+      missing.push({ ing, needed, have });
+    }
   });
   return missing;
 }
@@ -2343,6 +2362,19 @@ document.getElementById('cook-confirm-anyway-btn').addEventListener('click', ()=
 /* ============================================================
    COOK MODE — full-screen: gather ingredients + scroll through steps
    ============================================================ */
+// Shared display for a recipe ingredient's substitute options — used in Cook Mode,
+// Recipe Overview, and the missing-ingredients popup.
+function substitutesHtml(subs){
+  if (!subs || !subs.length) return '';
+  const lines = subs.map(sub => {
+    const ing = state.ingredients[sub.ingredientId];
+    if (!ing) return '';
+    return `<div class="ri-sub-display-row"><span>${ingredientIconHtml(ing)} ${escapeHtml(ing.name)}</span><span>${formatQty(sub.qty)} ${UNIT_LABEL[sub.unit]||sub.unit}</span></div>`;
+  }).filter(Boolean).join('');
+  if (!lines) return '';
+  return `<div class="ri-sub-display"><span class="ri-sub-display-title">↔ Substitute with:</span>${lines}</div>`;
+}
+
 function openCookMode(recipeId){
   const r = state.recipes[recipeId];
   if (!r) return;
@@ -2363,7 +2395,7 @@ function openCookMode(recipeId){
       <span class="s-emoji">${ingredientIconHtml(ing)}</span>
       <span class="cook-ing-name">${escapeHtml(ing.name)}</span>
       <span class="cook-ing-qty">${formatQty(qty)} ${UNIT_LABEL[unit]||unit}</span>
-    </label>${breakdown}`;
+    </label>${breakdown}${substitutesHtml(ri.subs)}`;
   }).join('');
   ingList.innerHTML = rowsHtml || '<p class="shop-empty">No ingredients listed for this recipe.</p>';
   ingList.querySelectorAll('.cook-ing-item').forEach(item=>{
@@ -2449,7 +2481,7 @@ function openRecipeOverview(recipeId){
       <span class="s-emoji">${ingredientIconHtml(ing)}</span>
       <span class="cook-ing-name">${escapeHtml(ing.name)}</span>
       <span class="cook-ing-qty">${formatQty(qty)} ${UNIT_LABEL[unit]||unit}</span>
-    </div>${breakdown}`;
+    </div>${breakdown}${substitutesHtml(ri.subs)}`;
   }).join('');
   ingList.innerHTML = ingRows || '<p class="shop-empty">No ingredients listed for this recipe.</p>';
 
@@ -2590,7 +2622,10 @@ function mountIngredientCombo(root, hiddenSelector, filterFn){
   if (preselected) searchInput.value = preselected.name;
 }
 
-function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:''}){
+function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:'', subs:[]}){
+  const wrap = document.createElement('div');
+  wrap.className = 'ri-row-wrap';
+
   const row = document.createElement('div');
   row.className = 'ri-row';
   const initialIng = ri.ingredientId ? state.ingredients[ri.ingredientId] : null;
@@ -2606,8 +2641,46 @@ function addRecipeIngredientRow(ri = {ingredientId:'', qty:'', unit:''}){
     // rebuild the unit list for the newly-chosen ingredient (it may have its own custom units)
     row.querySelector('.ri-unit').innerHTML = unitOptionsHtml(ing ? ing.unit : 'g', ing);
   });
+  row.querySelector('.ri-remove').addEventListener('click', ()=> wrap.remove());
+  wrap.appendChild(row);
+
+  const subsList = document.createElement('div');
+  subsList.className = 'ri-subs-list';
+  wrap.appendChild(subsList);
+
+  const addSubBtn = document.createElement('button');
+  addSubBtn.type = 'button';
+  addSubBtn.className = 'ri-add-sub-link';
+  addSubBtn.textContent = '+ Add substitute';
+  addSubBtn.addEventListener('click', ()=> addRecipeSubRow(subsList));
+  wrap.appendChild(addSubBtn);
+
+  (ri.subs||[]).forEach(sub => addRecipeSubRow(subsList, sub));
+
+  recipeIngredientsEl.appendChild(wrap);
+}
+// A substitute row lives nested under its "parent" ingredient — same combo-search
+// pattern, just a smaller/indented row, with its own qty+unit since a substitute
+// doesn't always swap in at the same amount (e.g. buttermilk -> 1 cup milk + 1 tbsp
+// vinegar isn't representable here, but "1 cup yogurt" instead of "1 cup buttermilk" is).
+function addRecipeSubRow(subsList, sub = {ingredientId:'', qty:'', unit:''}){
+  const row = document.createElement('div');
+  row.className = 'ri-sub-row';
+  const initialIng = sub.ingredientId ? state.ingredients[sub.ingredientId] : null;
+  const initialUnit = sub.unit || (initialIng ? initialIng.unit : 'g');
+  row.innerHTML = `
+    <span class="ri-sub-label">↔</span>
+    ${ingredientComboHtml(`class="ri-sub-ingredient" value="${sub.ingredientId||''}"`)}
+    <input type="number" class="ri-sub-qty" placeholder="qty" step="any" min="0" value="${sub.qty ?? ''}" />
+    <select class="ri-sub-unit">${unitOptionsHtml(initialUnit, initialIng)}</select>
+    <button type="button" class="ri-remove">✕</button>`;
+  mountIngredientCombo(row.querySelector('.ing-combo'), '.ri-sub-ingredient');
+  row.querySelector('.ri-sub-ingredient').addEventListener('change', (e)=>{
+    const ing = state.ingredients[e.target.value];
+    row.querySelector('.ri-sub-unit').innerHTML = unitOptionsHtml(ing ? ing.unit : 'g', ing);
+  });
   row.querySelector('.ri-remove').addEventListener('click', ()=> row.remove());
-  recipeIngredientsEl.appendChild(row);
+  subsList.appendChild(row);
 }
 // Builds the <option> list for a recipe-row unit picker: the standard units, plus
 // whichever custom unit(s) belong to the currently-selected ingredient (its own custom
@@ -2851,11 +2924,12 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
   const baseServings = Number(document.getElementById('recipe-servings').value)||1;
   if (!name){ toast('Give the recipe a name'); return; }
 
-  const allRows = Array.from(recipeIngredientsEl.querySelectorAll('.ri-row'));
+  const allWraps = Array.from(recipeIngredientsEl.querySelectorAll('.ri-row-wrap'));
   // Catch rows that look filled in but never actually got a valid ingredient picked from
   // the search list — e.g. typed a name and clicked away without selecting a result.
   // These used to just silently vanish on save, which looked like the app "lost" them.
-  const halfFilled = allRows.some(row => {
+  const halfFilled = allWraps.some(wrap => {
+    const row = wrap.querySelector('.ri-row');
     const hasIngredient = !!row.querySelector('.ri-ingredient').value;
     const hasQty = Number(row.querySelector('.ri-qty').value) > 0;
     return hasQty && !hasIngredient;
@@ -2864,12 +2938,32 @@ document.getElementById('save-recipe-btn').addEventListener('click', async ()=>{
     toast('One of your ingredient rows has an amount but no ingredient selected — pick one from the search results');
     return;
   }
+  const halfFilledSub = allWraps.some(wrap =>
+    Array.from(wrap.querySelectorAll('.ri-sub-row')).some(subRow => {
+      const hasIngredient = !!subRow.querySelector('.ri-sub-ingredient').value;
+      const hasQty = Number(subRow.querySelector('.ri-sub-qty').value) > 0;
+      return hasQty && !hasIngredient;
+    })
+  );
+  if (halfFilledSub){
+    toast('One of your substitute rows has an amount but no ingredient selected — pick one from the search results');
+    return;
+  }
 
-  const ingredients = allRows.map(row=>({
-    ingredientId: row.querySelector('.ri-ingredient').value,
-    qty: Number(row.querySelector('.ri-qty').value)||0,
-    unit: row.querySelector('.ri-unit').value
-  })).filter(ri => ri.ingredientId && ri.qty > 0);
+  const ingredients = allWraps.map(wrap => {
+    const row = wrap.querySelector('.ri-row');
+    const subs = Array.from(wrap.querySelectorAll('.ri-sub-row')).map(subRow => ({
+      ingredientId: subRow.querySelector('.ri-sub-ingredient').value,
+      qty: Number(subRow.querySelector('.ri-sub-qty').value)||0,
+      unit: subRow.querySelector('.ri-sub-unit').value
+    })).filter(s => s.ingredientId && s.qty > 0);
+    return {
+      ingredientId: row.querySelector('.ri-ingredient').value,
+      qty: Number(row.querySelector('.ri-qty').value)||0,
+      unit: row.querySelector('.ri-unit').value,
+      subs
+    };
+  }).filter(ri => ri.ingredientId && ri.qty > 0);
 
   const steps = Array.from(recipeStepsEl.querySelectorAll('.rs-row')).map(row => ({
     text: row.querySelector('.rs-text').value.trim(),
