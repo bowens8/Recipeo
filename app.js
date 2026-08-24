@@ -678,6 +678,7 @@ onAuthStateChanged(auth, (user)=>{
     attachListeners();
     migrateOwnDataToSharedIfNeeded();
     backfillIngredientCreatedAtIfNeeded();
+    fixNonsensicalIngredientUnitsIfNeeded();
   } else {
     state.uid = null;
     appShell.classList.add('hidden');
@@ -805,6 +806,61 @@ async function backfillIngredientCreatedAtIfNeeded(){
     await Promise.all(writes);
   } catch(err){
     console.error('Ingredient createdAt backfill failed:', err);
+  }
+}
+
+// One-time cleanup for ingredients whose unit obviously doesn't make sense — a bell
+// pepper tracked in grams, a spice tracked in grams instead of tsp, oil in grams
+// instead of fl oz. This happens to ingredients that got auto-created blind (no real
+// data behind them) before better import logic existed. Matched purely by name, since
+// that's all we have for these. Deliberately conservative: only touches an ingredient
+// if the signed-in account's own pantry quantity for it is currently 0 — if there's a
+// real number already sitting there, changing the unit without knowing how to convert
+// that number correctly would silently corrupt it, so those are left alone entirely.
+const SMART_UNIT_FIXES = [
+  { pattern: /\bbell pepper|poblano pepper|jalape[nñ]o pepper|banana pepper|serrano pepper\b/i, unit:'each', emoji:'🫑' },
+  { pattern: /\begg(s)?\b/i, unit:'each', emoji:'🥚' },
+  { pattern: /\bscallion(s)?|green onion(s)?\b/i, unit:'each', emoji:'🌱' },
+  { pattern: /\bcucumber(s)?\b/i, unit:'each', emoji:'🥒' },
+  { pattern: /\blime(s)?\b/i, unit:'each', emoji:'🍋' },
+  { pattern: /\blemon(s)?\b/i, unit:'each', emoji:'🍋' },
+  { pattern: /\byellow onion|red onion|white onion|sweet onion\b/i, unit:'each', emoji:'🧅' },
+  { pattern: /\bavocado(s)?\b/i, unit:'each', emoji:'🥑' },
+  { pattern: /\bapple(s)?\b/i, unit:'each', emoji:'🍎' },
+  { pattern: /vegetable oil|canola oil|rice vinegar|apple cider vinegar|white wine vinegar|balsamic vinegar/i, unit:'floz' },
+  { pattern: /baking soda|baking powder|vanilla extract|garlic powder|onion powder|chili powder|\bturmeric\b|\bcumin\b|\bcinnamon\b|\bpaprika\b|\bblack pepper\b|sesame seeds|chia seeds|seasoning blend|spice blend/i, unit:'tsp' },
+];
+function smartUnitFixFor(name){
+  const found = SMART_UNIT_FIXES.find(f => f.pattern.test(name||''));
+  return found || null;
+}
+async function fixNonsensicalIngredientUnitsIfNeeded(){
+  try{
+    const [ingSnap, pantrySnap] = await Promise.all([
+      getDocs(sharedCol(SHARED_INGREDIENTS_COLLECTION)),
+      getDocs(col('pantry'))
+    ]);
+    const myPantryQty = {};
+    pantrySnap.forEach(d => { myPantryQty[d.id] = Number(d.data().qty) || 0; });
+
+    const writes = [];
+    let fixedCount = 0;
+    ingSnap.forEach(d => {
+      const ing = d.data();
+      if (ing.unit !== 'g') return; // only ingredients still stuck on the old blind-import default
+      if ((myPantryQty[d.id] || 0) !== 0) return; // has real stock — don't touch, can't safely convert
+      const fix = smartUnitFixFor(ing.name);
+      if (!fix) return;
+      const patch = { unit: fix.unit };
+      if (fix.emoji && (!ing.emoji || ing.emoji === '🛒')) patch.emoji = fix.emoji;
+      writes.push(setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, d.id), patch, { merge: true }));
+      fixedCount++;
+    });
+    if (writes.length === 0) return;
+    await Promise.all(writes);
+    toast(`Fixed units on ${fixedCount} ingredient${fixedCount!==1?'s':''} that didn't make sense (e.g. "Bell Pepper" in grams → each)`);
+  } catch(err){
+    console.error('Ingredient unit cleanup failed:', err);
   }
 }
 
