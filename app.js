@@ -395,21 +395,36 @@ function buildIngredientDataFromBlock(block){
   const caloriesPerStandardUnit = Number(kv.calories_per_standard_unit) || 0;
   const caloriesPerGram = standardUnitWeightG > 0 ? caloriesPerStandardUnit / standardUnitWeightG : 0;
 
-  // DENSITY_CONVERSION: any "grams_per_X" key becomes a custom "larger" unit worth
-  // that many grams — e.g. grams_per_cup_dry: 185 -> custom unit "cup_dry" = 185 g.
+  const gramsPerEach = Number(kv.grams_per_each) || 0;
+  // If this ingredient is naturally counted (an onion, an egg, a bell pepper) rather
+  // than weighed, use "each" as its base unit instead of grams — nobody actually
+  // thinks of a bell pepper in grams. Everything below (custom units, package size,
+  // pricing) gets expressed in whichever base unit this ends up being, not always g.
+  const useEachBase = gramsPerEach > 0;
+  const baseUnit = useEachBase ? 'each' : 'g';
+  const baseUnitsPerGram = useEachBase ? (1 / gramsPerEach) : 1; // for converting gram-based figures below
+
+  const calories = useEachBase ? (caloriesPerGram * gramsPerEach) : caloriesPerGram;
+
+  // DENSITY_CONVERSION: any "grams_per_X" key becomes a custom unit — its factor is
+  // expressed relative to whatever the base unit ended up being (each or g), not
+  // always grams. "each" itself is skipped here since it became the base unit above,
+  // not a custom unit alongside it.
   const customUnits = [];
   Object.keys(kv).forEach(key => {
     const m = key.match(/^grams_per_(.+)$/);
-    if (m){
+    if (m && m[1] !== 'each'){
       const grams = Number(kv[key]);
-      if (grams > 0) customUnits.push({ name: m[1], direction: 'larger', factor: grams });
+      if (grams > 0) customUnits.push({ name: m[1], direction: 'larger', factor: grams * baseUnitsPerGram });
     }
   });
   // Also populate the ingredient's plain "grams per cup" field — this is what lets a
   // recipe use the ordinary "cup" unit (not just a compound one like "cup_dry") and
   // still convert correctly. Prefer an exact "grams_per_cup" line if the data has one;
   // otherwise fall back to "cooked" then "dry" then whatever cup-ish measure is given,
-  // since some density figure is more useful here than leaving it at zero.
+  // since some density figure is more useful here than leaving it at zero. This stays
+  // in raw grams-per-cup regardless of base unit — it's a bridging figure, not itself
+  // expressed in the base unit.
   const gramsPerCup =
     Number(kv.grams_per_cup) ||
     Number(kv.grams_per_cup_cooked) ||
@@ -419,13 +434,15 @@ function buildIngredientDataFromBlock(block){
       return anyCupKey ? Number(kv[anyCupKey]) : 0;
     })() || 0;
 
-  // The package's own unit (e.g. "bag") becomes a custom unit too, if derivable.
+  // The package's own unit (e.g. "bag", "dozen") becomes a custom unit too — "1 bag"
+  // means the whole package, so its factor is the package's total weight, not that
+  // divided again (units_per_package instead describes how many individual items are
+  // inside one package, e.g. 12 for a dozen — a separate fact from the package's own
+  // size).
   const packageWeightG = Number(kv.package_weight_g) || 0;
-  const unitsPerPackage = Number(kv.units_per_package) || 1;
-  if (kv.common_package_unit && packageWeightG > 0 && unitsPerPackage > 0){
-    const gramsPerPackageUnit = packageWeightG / unitsPerPackage;
+  if (kv.common_package_unit && packageWeightG > 0){
     if (!customUnits.some(c => c.name === kv.common_package_unit)){
-      customUnits.push({ name: kv.common_package_unit, direction: 'larger', factor: gramsPerPackageUnit });
+      customUnits.push({ name: kv.common_package_unit, direction: 'larger', factor: packageWeightG * baseUnitsPerGram });
     }
   }
 
@@ -434,7 +451,8 @@ function buildIngredientDataFromBlock(block){
     const canonical = canonicalStoreName(storeName);
     if (!canonical) return; // unrecognized store name — skip rather than guess
     const price = Number(p.package_price);
-    const packageSize = Number(p.package_size_g) || packageWeightG;
+    const packageSizeG = Number(p.package_size_g) || packageWeightG;
+    const packageSize = packageSizeG * baseUnitsPerGram; // expressed in the base unit
     if (price > 0 && packageSize > 0) prices[canonical] = { price, packageSize, unit: '' };
   });
 
@@ -443,11 +461,12 @@ function buildIngredientDataFromBlock(block){
     name: block.name,
     emoji: common ? common.emoji : '🛒',
     photo: null,
-    unit: 'g',
+    unit: baseUnit,
     isCustomUnit: false,
     customUnits,
-    calories: Math.round(caloriesPerGram * 1000) / 1000,
+    calories: Math.round(calories * 1000) / 1000,
     gramsPerCup,
+    gramsPerEach,
     packaged: packageWeightG > 0,
     isSpice: false,
     isBlend: false,
@@ -1881,7 +1900,7 @@ document.getElementById('import-preview-btn').addEventListener('click', ()=>{
     const detailedSummary = (!r.existingId && r.detailedMatch) ? (() => {
       const d = r.detailedMatch.data;
       const storeCount = Object.keys(d.prices||{}).length;
-      const bits = [`${formatQty(d.calories)} kcal/g`];
+      const bits = [`${formatQty(d.calories)} kcal/${UNIT_LABEL[d.unit]||d.unit}`, `tracked as: ${UNIT_LABEL[d.unit]||d.unit}`];
       if (d.category) bits.push(d.category);
       if (storeCount) bits.push(`priced at ${storeCount} store${storeCount>1?'s':''}`);
       return `<div class="import-detailed-summary">📋 ${escapeHtml(bits.join(' · '))}</div>`;
@@ -2122,10 +2141,11 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
   state.editing.pendingIngredientImport = resolved;
 
   document.getElementById('import-ing-preview-list').innerHTML = resolved.map((r, i) => {
+    const unitLabel = UNIT_LABEL[r.data.unit] || r.data.unit;
     const storeLines = Object.entries(r.data.prices).map(([store, p]) =>
-      `${store}: $${p.price.toFixed(2)} / ${formatQty(p.packageSize)} g`).join(' · ');
+      `${store}: $${p.price.toFixed(2)} / ${formatQty(p.packageSize)} ${unitLabel}`).join(' · ');
     const customUnitLines = r.data.customUnits.map(c =>
-      `1 ${c.name} = ${formatQty(c.factor)} g`).join(', ');
+      `1 ${c.name} = ${formatQty(c.factor)} ${unitLabel}`).join(', ');
     const badge = r.existingId
       ? `<span class="import-status-badge matched">updates existing</span>`
       : `<span class="import-status-badge new">new ingredient</span>`;
@@ -2136,7 +2156,8 @@ document.getElementById('import-ing-preview-btn').addEventListener('click', ()=>
         ${badge}
       </div>
       <div class="import-ing-detail-list">
-        <span><strong>Calories:</strong> ${formatQty(r.data.calories)} kcal/g</span>
+        <span><strong>Tracked as:</strong> ${unitLabel}</span>
+        <span><strong>Calories:</strong> ${formatQty(r.data.calories)} kcal/${unitLabel}</span>
         ${r.data.category ? `<span><strong>Grocery aisle:</strong> ${escapeHtml(r.data.category)}</span>` : ''}
         ${r.data.gramsPerCup ? `<span><strong>Grams per cup:</strong> ${formatQty(r.data.gramsPerCup)} g (lets recipes use plain "cup" too)</span>` : ''}
         ${customUnitLines ? `<span><strong>Custom units:</strong> ${escapeHtml(customUnitLines)}</span>` : ''}
@@ -2210,6 +2231,12 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
           // one — otherwise a re-import with no DENSITY_CONVERSION section would
           // silently erase a value someone had set by hand.
           gramsPerCup: r.data.gramsPerCup || existing.gramsPerCup || 0,
+          gramsPerEach: r.data.gramsPerEach || existing.gramsPerEach || 0,
+          // Same idea for the base unit itself: only switch it if this import
+          // explicitly determined "each" is right (via grams_per_each) — otherwise
+          // keep whatever unit the ingredient already had rather than silently
+          // reverting an "each"-based ingredient back to grams.
+          unit: r.data.gramsPerEach > 0 ? r.data.unit : (existing.unit || r.data.unit),
           category: r.data.category || existing.category || ''
         };
         await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, r.existingId), merged);
