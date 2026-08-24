@@ -358,10 +358,13 @@ up as unconverted on the shopping list even with Grams per cup filled in.
 
 The detailed ingredient importer picks up on this automatically: whenever the imported
 data includes `grams_per_each`, the ingredient gets created tracked as **each** (not
-grams) — so a bell pepper, an onion, an egg all show up as "each" everywhere (Pantry,
+ounces) — so a bell pepper, an onion, an egg all show up as "each" everywhere (Pantry,
 the Ingredients tab, the shopping list), with calories, package size, and pricing all
-converted into that unit correctly. Ingredients with no `grams_per_each` in the data
-(flour, sugar, chicken breast by weight) still track in grams, same as before.
+converted into that unit correctly. Everything else defaults to **ounces** rather than
+grams (flour, sugar, chicken breast by weight, etc.) — American units throughout, both
+in what the import prompts ask Claude to write and in how the app itself tracks
+anything weight-based. Ounces combine cleanly into pounds for larger amounts
+automatically wherever quantities are shown.
 
 **One-time cleanup for ingredients from before this existed:** the first time you sign
 in after this update, the app automatically fixes any ingredient whose unit obviously
