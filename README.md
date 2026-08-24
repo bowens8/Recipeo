@@ -356,6 +356,13 @@ weight is what connects the two. Without Grams per each, "each"-based ingredient
 convert to weight or volume at all, so a recipe using the wrong unit for one will show
 up as unconverted on the shopping list even with Grams per cup filled in.
 
+The detailed ingredient importer picks up on this automatically: whenever the imported
+data includes `grams_per_each`, the ingredient gets created tracked as **each** (not
+grams) — so a bell pepper, an onion, an egg all show up as "each" everywhere (Pantry,
+the Ingredients tab, the shopping list), with calories, package size, and pricing all
+converted into that unit correctly. Ingredients with no `grams_per_each` in the data
+(flour, sugar, chicken breast by weight) still track in grams, same as before.
+
 ## Sorting the shopping list
 
 The **Sort by** dropdown above the shopping list has three options: **Recommended**
