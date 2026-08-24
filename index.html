@@ -485,8 +485,13 @@ Format rules:
   the name part specifically. This matters: a name like "black coffee, cooled"
   won't match anything in an ingredient library or get useful nutrition/pricing
   data, but "Black Coffee" will.
-- Convert weird/non-standard units into one of: tsp, tbsp, cup, fl oz, oz, lb,
-  g, kg, ml, l — pick whichever the source most naturally uses.
+- Use American units: tsp, tbsp, cup, fl oz, oz, lb — even if the source recipe
+  gives amounts in metric (grams, kilograms, milliliters, liters), convert them
+  (e.g. a source giving "200 g flour" should become roughly "1 1/2 cups flour" or
+  "7 oz flour", whichever reads more naturally for that ingredient — flour/sugar/
+  produce-by-weight usually read better in cups or oz, liquids in cups/fl oz,
+  small amounts like spices in tsp/tbsp). Only fall back to g/kg/ml/l if there's
+  truly no sensible American equivalent.
 - INSTRUCTIONS are numbered "1.", "2.", etc., one step per line, in the source's
   original wording (condense only if a step is unreasonably long).
 - SERVINGS is a single number. If the source gives a range (e.g. "4-6"), pick
@@ -503,7 +508,7 @@ INGREDIENT
 name: [the cleaned ingredient name — must exactly match what you wrote in the ingredient list above, not the raw recipe wording]
 grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
 UNIT_INFORMATION
-standard_unit: [a natural serving/measure unit, e.g. cup_cooked, slice, tbsp]
+standard_unit: [a natural AMERICAN serving/measure unit, e.g. cup_cooked, slice, tbsp, whole item — never a metric-style serving like "100g"]
 standard_unit_weight_g: [grams that one standard_unit weighs]
 calories_per_standard_unit: [calories in one standard_unit]
 DENSITY_CONVERSION
@@ -622,7 +627,7 @@ INGREDIENT
 name: [the ingredient's common name]
 grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
 UNIT_INFORMATION
-standard_unit: [a natural serving/measure unit, e.g. cup_cooked, slice, tbsp]
+standard_unit: [a natural AMERICAN serving/measure unit, e.g. cup_cooked, slice, tbsp, whole item — never a metric-style serving like "100g"]
 standard_unit_weight_g: [grams that one standard_unit weighs]
 calories_per_standard_unit: [calories in one standard_unit]
 DENSITY_CONVERSION
