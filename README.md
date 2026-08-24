@@ -363,6 +363,18 @@ the Ingredients tab, the shopping list), with calories, package size, and pricin
 converted into that unit correctly. Ingredients with no `grams_per_each` in the data
 (flour, sugar, chicken breast by weight) still track in grams, same as before.
 
+**One-time cleanup for ingredients from before this existed:** the first time you sign
+in after this update, the app automatically fixes any ingredient whose unit obviously
+doesn't make sense — a bell pepper or an egg tracked in grams, a spice like oregano or
+vanilla extract tracked in grams instead of tsp, an oil or vinegar in grams instead of
+fl oz — matched by name. This only ever touches an ingredient if your own pantry
+quantity for it is currently 0; if there's already a real number sitting there, the
+unit is left alone rather than risk silently corrupting it (changing "737 g" of
+something to "737 tsp" without actually converting the number would be worse than
+leaving it as grams). If you have an ingredient with real stock whose unit still looks
+wrong, fix it by hand on its edit screen — it's worth double-checking the quantity
+afterward since the number itself doesn't automatically convert.
+
 ## Sorting the shopping list
 
 The **Sort by** dropdown above the shopping list has three options: **Recommended**
@@ -541,3 +553,4 @@ the security rules that make the sharing possible).
 - Anyone with an account can edit or delete any shared ingredient or recipe — there's no
   per-item ownership or edit history, so it works best for a small trusted group (a
   household) rather than a large public group.
+  
