@@ -459,6 +459,14 @@ tier). Because of this, keep photos reasonable: a recipe with a cover photo and 
 on every single step could approach Firestore's 1&nbsp;MB per-document limit if you have
 many steps — if you ever hit that, drop a couple of step photos.
 
+**🖼️ Auto-fill missing photos** (Ingredients tab) looks up a free photo for every
+ingredient that doesn't have one yet, using Wikipedia's public image search — no API key
+needed, nothing to set up. It never touches an ingredient that already has a photo, and
+skips anything it can't find a confident match for (branded/specific products especially)
+rather than guessing. Since it's an automated lookup by name, not a curated choice, it's
+worth a quick scan afterward — swap out anything that isn't quite right the same way you'd
+normally set a photo.
+
 ## Shopping mode
 
 Click **Start Shopping** on the Shopping List tab while you're actually at the store.
@@ -553,4 +561,3 @@ the security rules that make the sharing possible).
 - Anyone with an account can edit or delete any shared ingredient or recipe — there's no
   per-item ownership or edit history, so it works best for a small trusted group (a
   household) rather than a large public group.
-  
