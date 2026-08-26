@@ -405,45 +405,21 @@ function parseIngredientDataBlock(lines){
   return { name, kv, prices };
 }
 // Converts one parsed block into the app's actual ingredient document shape.
+const LIQUID_NAME_PATTERN = /\boil\b|\bvinegar\b|\bsauce\b|\bextract\b|\bsyrup\b|\bjuice\b|\bbroth\b|\bstock\b|\bwine\b|\bmilk\b|\bcream\b|\bdressing\b|\bmarinade\b|\bwater\b|\bbeer\b|\bvodka\b|\brum\b|\bwhiskey\b/i;
 function buildIngredientDataFromBlock(block){
   const kv = block.kv;
   const standardUnitWeightG = Number(kv.standard_unit_weight_g) || 0;
   const caloriesPerStandardUnit = Number(kv.calories_per_standard_unit) || 0;
   const caloriesPerGram = standardUnitWeightG > 0 ? caloriesPerStandardUnit / standardUnitWeightG : 0;
 
-  const gramsPerEach = Number(kv.grams_per_each) || 0;
-  // If this ingredient is naturally counted (an onion, an egg, a bell pepper) rather
-  // than weighed, use "each" as its base unit. Otherwise default to ounces, not
-  // grams — reads naturally on a US shopping list and combines cleanly into lb for
-  // larger amounts via the app's normal unit conversion. Everything below (custom
-  // units, package size, pricing) gets expressed in whichever base unit this ends up
-  // being, not always grams.
-  const OUNCE_IN_GRAMS = 28.3495;
-  const useEachBase = gramsPerEach > 0;
-  const baseUnit = useEachBase ? 'each' : 'oz';
-  const baseUnitsPerGram = useEachBase ? (1 / gramsPerEach) : (1 / OUNCE_IN_GRAMS); // for converting gram-based figures below
-
-  const calories = useEachBase ? (caloriesPerGram * gramsPerEach) : (caloriesPerGram * OUNCE_IN_GRAMS);
-
-  // DENSITY_CONVERSION: any "grams_per_X" key becomes a custom unit — its factor is
-  // expressed relative to whatever the base unit ended up being (each or oz), not
-  // always grams. "each" itself is skipped here since it became the base unit above,
-  // not a custom unit alongside it.
-  const customUnits = [];
-  Object.keys(kv).forEach(key => {
-    const m = key.match(/^grams_per_(.+)$/);
-    if (m && m[1] !== 'each'){
-      const grams = Number(kv[key]);
-      if (grams > 0) customUnits.push({ name: m[1], direction: 'larger', factor: grams * baseUnitsPerGram });
-    }
-  });
   // Also populate the ingredient's plain "grams per cup" field — this is what lets a
   // recipe use the ordinary "cup" unit (not just a compound one like "cup_dry") and
   // still convert correctly. Prefer an exact "grams_per_cup" line if the data has one;
   // otherwise fall back to "cooked" then "dry" then whatever cup-ish measure is given,
   // since some density figure is more useful here than leaving it at zero. This stays
   // in raw grams-per-cup regardless of base unit — it's a bridging figure, not itself
-  // expressed in the base unit.
+  // expressed in the base unit. Computed early since the base-unit decision below
+  // (for liquids) needs it.
   const gramsPerCup =
     Number(kv.grams_per_cup) ||
     Number(kv.grams_per_cup_cooked) ||
@@ -452,6 +428,44 @@ function buildIngredientDataFromBlock(block){
       const anyCupKey = Object.keys(kv).find(k => /^grams_per_cup/.test(k));
       return anyCupKey ? Number(kv[anyCupKey]) : 0;
     })() || 0;
+
+  const gramsPerEach = Number(kv.grams_per_each) || 0;
+  const useEachBase = gramsPerEach > 0;
+  // A liquid (oil, vinegar, sauce, extract...) is bought and measured by volume, not
+  // weight — "oz" would technically work but isn't how anyone actually thinks about a
+  // bottle of cooking oil, so use "fl oz" instead. Bridge grams -> fl oz using the
+  // ingredient's real density if we have it (grams per cup); otherwise fall back to a
+  // water-like approximation (close enough for most kitchen liquids) rather than
+  // defaulting to weight ounces for something that's never bought that way.
+  const OUNCE_IN_GRAMS = 28.3495;
+  const FLOZ_IN_ML = 29.5735;
+  const CUP_IN_ML = 236.588;
+  const looksLikeLiquid = !useEachBase && LIQUID_NAME_PATTERN.test(block.name || '');
+  const gramsPerFlOz = looksLikeLiquid
+    ? (gramsPerCup > 0 ? (gramsPerCup / CUP_IN_ML) * FLOZ_IN_ML : FLOZ_IN_ML)
+    : 0;
+
+  // Everything below (custom units, package size, pricing) gets expressed in
+  // whichever base unit this resolves to, not always grams.
+  let baseUnit, baseUnitsPerGram;
+  if (useEachBase){ baseUnit = 'each'; baseUnitsPerGram = 1 / gramsPerEach; }
+  else if (looksLikeLiquid){ baseUnit = 'floz'; baseUnitsPerGram = 1 / gramsPerFlOz; }
+  else { baseUnit = 'oz'; baseUnitsPerGram = 1 / OUNCE_IN_GRAMS; }
+
+  const calories = caloriesPerGram / baseUnitsPerGram;
+
+  // DENSITY_CONVERSION: any "grams_per_X" key becomes a custom unit — its factor is
+  // expressed relative to whatever the base unit ended up being (each, oz, or fl oz),
+  // not always grams. "each" itself is skipped here since it became the base unit
+  // above, not a custom unit alongside it.
+  const customUnits = [];
+  Object.keys(kv).forEach(key => {
+    const m = key.match(/^grams_per_(.+)$/);
+    if (m && m[1] !== 'each'){
+      const grams = Number(kv[key]);
+      if (grams > 0) customUnits.push({ name: m[1], direction: 'larger', factor: grams * baseUnitsPerGram });
+    }
+  });
 
   // The package's own unit (e.g. "bag", "dozen") becomes a custom unit too — "1 bag"
   // means the whole package, so its factor is the package's total weight, not that
@@ -1153,9 +1167,9 @@ function renderWeekPlan(){
         cookBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
           try{
-            const missing = missingIngredientsForRecipe(state.recipes[m.recipeId]);
-            if (missing.length === 0) openCookMode(m.recipeId);
-            else openMissingIngredientsModal(m.recipeId, missing);
+            const missing = missingIngredientsForRecipe(state.recipes[m.recipeId], m.batchServings);
+            if (missing.length === 0) openCookMode(m.recipeId, m.batchServings);
+            else openMissingIngredientsModal(m.recipeId, missing, m.batchServings);
           } catch(err){
             console.error('Cook from week plan failed:', err);
             toast("Couldn't open that — see console for details");
@@ -1688,31 +1702,36 @@ document.getElementById('finish-shopping-btn').addEventListener('click', async (
 // than counted as missing, since we can't honestly say either way.
 // Checks whether any of an ingredient row's listed substitutes is already available
 // in sufficient quantity — returns that substitute's info, or null if none qualify.
-function availableSubstituteFor(subs){
+function availableSubstituteFor(subs, scale = 1){
   if (!subs || !subs.length) return null;
   for (const sub of subs){
     const subIng = state.ingredients[sub.ingredientId];
     if (!subIng) continue;
-    const needed = convertToIngredientUnit(Number(sub.qty)||0, sub.unit, subIng);
+    const needed = convertToIngredientUnit((Number(sub.qty)||0) * scale, sub.unit, subIng);
     if (needed === null) continue;
     const have = Number(state.pantry[sub.ingredientId]?.qty) || 0;
     if (have + 1e-9 >= needed) return { ing: subIng, needed };
   }
   return null;
 }
-function missingIngredientsForRecipe(r){
+// servingsOverride: when checking against a specific planned meal that used a
+// different batch size than the recipe's own base servings, pass that batch size
+// here so the check scales correctly (e.g. doubling a recipe needs double of
+// everything). Omit it for a generic "does this recipe need anything" check.
+function missingIngredientsForRecipe(r, servingsOverride){
+  const scale = (servingsOverride && r.baseServings) ? (Number(servingsOverride) / r.baseServings) : 1;
   const missing = [];
   (r.ingredients||[]).forEach(ri => {
     const ing = state.ingredients[ri.ingredientId];
     if (!ing) return;
     const rowUnit = ri.unit || ing.unit;
-    const needed = convertToIngredientUnit(Number(ri.qty)||0, rowUnit, ing);
+    const needed = convertToIngredientUnit((Number(ri.qty)||0) * scale, rowUnit, ing);
     if (needed === null) return;
     const have = Number(state.pantry[ri.ingredientId]?.qty) || 0;
     if (have + 1e-9 < needed){
       // Short on the original, but if a listed substitute is already in stock,
       // that's not actually a blocker to cooking — don't count it as missing.
-      if (availableSubstituteFor(ri.subs)) return;
+      if (availableSubstituteFor(ri.subs, scale)) return;
       missing.push({ ing, needed, have });
     }
   });
@@ -2351,8 +2370,9 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
   }
 });
 /* ---- "missing ingredients" confirmation before Cook Mode ---- */
-function openMissingIngredientsModal(recipeId, missing){
+function openMissingIngredientsModal(recipeId, missing, servingsOverride){
   state.editing.pendingCookRecipeId = recipeId;
+  state.editing.pendingCookServingsOverride = servingsOverride || null;
   document.getElementById('cook-confirm-recipe-name').textContent = state.recipes[recipeId]?.name || '';
   document.getElementById('cook-confirm-missing-list').innerHTML = missing.map(m => `
     <div class="missing-item">
@@ -2366,8 +2386,9 @@ document.getElementById('cook-confirm-cancel-btn').addEventListener('click', clo
 document.getElementById('cook-confirm-anyway-btn').addEventListener('click', ()=>{
   try{
     const recipeId = state.editing.pendingCookRecipeId;
+    const servingsOverride = state.editing.pendingCookServingsOverride;
     closeModals();
-    if (recipeId) openCookMode(recipeId);
+    if (recipeId) openCookMode(recipeId, servingsOverride);
     else toast("Couldn't tell which recipe — try clicking Cook again");
   } catch(err){
     console.error('"Cook anyway" failed:', err);
@@ -2391,20 +2412,28 @@ function substitutesHtml(subs){
   return `<div class="ri-sub-display"><span class="ri-sub-display-title">↔ Substitute with:</span>${lines}</div>`;
 }
 
-function openCookMode(recipeId){
+function openCookMode(recipeId, servingsOverride){
   const r = state.recipes[recipeId];
   if (!r) return;
   state.editing.cookingRecipeId = recipeId;
+  // When cooking a specific planned meal that used a different batch size than the
+  // recipe's own base servings (e.g. doubling a 4-serving recipe to make 8), scale
+  // every ingredient amount shown here to match — and remember that scale so "I
+  // cooked this" subtracts the correct (scaled) amounts from pantry, not the
+  // recipe's unscaled base amounts.
+  const scale = (servingsOverride && r.baseServings) ? (Number(servingsOverride) / r.baseServings) : 1;
+  state.editing.cookingScale = scale;
 
   document.getElementById('cook-recipe-title').textContent = r.name;
-  document.getElementById('cook-servings-label').textContent = `makes ${r.baseServings}`;
+  document.getElementById('cook-servings-label').textContent =
+    `makes ${servingsOverride ? formatQty(servingsOverride) : r.baseServings}`;
 
   const ingList = document.getElementById('cook-ingredient-list');
   const rowsHtml = (r.ingredients||[]).map(ri => {
     const ing = state.ingredients[ri.ingredientId];
     if (!ing) return '';
     const unit = ri.unit || ing.unit;
-    const qty = Number(ri.qty)||0;
+    const qty = (Number(ri.qty)||0) * scale;
     const breakdown = ing.isBlend ? blendBreakdownHtml(ing, convertToIngredientUnit(qty, unit, ing) ?? 0) : '';
     return `<label class="cook-ing-item">
       <input type="checkbox" />
@@ -2444,11 +2473,12 @@ document.getElementById('cook-done-btn').addEventListener('click', async ()=>{
   btn.disabled = true;
   try{
     const writes = [];
+    const scale = state.editing.cookingScale || 1;
     (r.ingredients||[]).forEach(ri => {
       const ing = state.ingredients[ri.ingredientId];
       if (!ing) return;
       const rowUnit = ri.unit || ing.unit;
-      const usedQtyInIngUnit = convertToIngredientUnit(Number(ri.qty)||0, rowUnit, ing);
+      const usedQtyInIngUnit = convertToIngredientUnit((Number(ri.qty)||0) * scale, rowUnit, ing);
       if (usedQtyInIngUnit === null || usedQtyInIngUnit <= 0) return;
       const haveQty = Number(state.pantry[ri.ingredientId]?.qty) || 0;
       const newQty = Math.max(0, haveQty - usedQtyInIngUnit);
