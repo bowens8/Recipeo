@@ -222,12 +222,13 @@ Every row on the Ingredients tab has a small colored status dot on the right:
 
 - 🔴 **Red** — the core data is missing (no calories set). This is the same signal as
   the "⚠️ needs data" warning on auto-created ingredients, shown as a dot here too.
-- 🟡 **Yellow** — calories are set, but it's missing a price at one or more of your
-  three stores.
-- 🟢 **Green** — fully filled in: calories, plus a price at Aldi, Kroger, *and* Giant
-  Eagle.
+- 🟡 **Yellow** — calories are set, but it's missing **grams per cup** and/or a price
+  at one or more of your three stores.
+- 🟢 **Green** — fully filled in: calories, **grams per cup**, plus a price at Aldi,
+  Kroger, *and* Giant Eagle.
 
-Hover any dot for a specific reason (e.g. "Missing a price at: Giant Eagle").
+Hover any dot for a specific reason (e.g. "missing grams per cup · missing a price at:
+Giant Eagle").
 
 ## Sorting the ingredient library
 
@@ -266,6 +267,16 @@ lemon" you'll get all three fully filled in immediately.
 
 Every meal you add to the Week Plan now gets a type — Breakfast 🍳, Lunch 🥪, Dinner 🍽️,
 or Snack 🍿 — shown as an icon right on its chip so a day's plan is readable at a glance.
+Meals within a day are automatically sorted in that order (breakfast, then lunch, then
+dinner, then snack) regardless of what order you added them in.
+
+You can also **drag a meal chip** to rearrange it — drop it above or below another chip
+on the same day to reorder, or drag it onto a different day's column entirely to move it
+there (dropping on empty space or the "+ Add meal" button appends it to the end of that
+day). Dragging always wins over the automatic breakfast/lunch/dinner/snack sort — once
+you've manually rearranged something, that position sticks. Plans from before this
+feature existed get a sensible default order automatically the first time you sign in
+after updating.
 
 For things that aren't really a "recipe" — cereal, coffee, a piece of fruit — use the
 **Quick item** option (alongside "Cook something" and "Eat leftovers") when adding a
@@ -289,6 +300,18 @@ Tap the ♥ on any recipe card to favorite it (turns red) — favorites are your
 not shared with everyone else using this planner. The **Sort by** dropdown on the
 Recipes tab reorders the list: alphabetically, favorites first, calories (low–high), or
 **fewest missing from pantry** — handy for "what can I basically make right now?"
+
+## Cooking a planned meal at a different batch size
+
+When you plan a meal (Week Plan → + Add meal), you pick how many servings to actually
+make that day — this can be more or less than the recipe's own base servings (doubling
+a 4-serving recipe to make 8, say). Clicking **🍳 Cook this** on that meal's chip scales
+every ingredient amount shown in Cook Mode to match the planned batch size, not the
+recipe's original amount — the missing-ingredients check, the "makes N" label, and what
+gets subtracted from Pantry when you tap "I cooked this" all use the same scaled
+numbers. Cooking a recipe directly from the Recipes/Baking tab (with no specific planned
+meal behind it) always uses the recipe's own base servings, since there's no planned
+batch size to reference there.
 
 ## Substitute ingredients
 
@@ -374,11 +397,33 @@ The detailed ingredient importer picks up on this automatically: whenever the im
 data includes `grams_per_each`, the ingredient gets created tracked as **each** (not
 ounces) — so a bell pepper, an onion, an egg all show up as "each" everywhere (Pantry,
 the Ingredients tab, the shopping list), with calories, package size, and pricing all
-converted into that unit correctly. Everything else defaults to **ounces** rather than
-grams (flour, sugar, chicken breast by weight, etc.) — American units throughout, both
-in what the import prompts ask Claude to write and in how the app itself tracks
-anything weight-based. Ounces combine cleanly into pounds for larger amounts
-automatically wherever quantities are shown.
+converted into that unit correctly. A liquid (cooking oil, vinegar, sauce, extract,
+broth, wine, milk, juice, syrup, and similar — matched by name) tracks in **fl oz**
+instead, since that's how liquids are actually bought and measured, not by weight —
+using the ingredient's real density if the data included one (a `grams_per_cup` line),
+or a close water-like approximation if not, saved onto the ingredient either way so a
+recipe that later references it by weight instead of volume can still convert (an
+approximation only ever gets replaced by a real value you set by hand, never silently
+overwritten back by a later re-import). Everything else (flour, sugar, chicken breast
+by weight, etc.) defaults to plain **ounces** rather than grams. American units
+throughout, both in what the import prompts ask Claude to write and in how the app
+itself tracks anything weight- or volume-based. Ounces combine cleanly into pounds, and
+fl oz into cups, for larger amounts automatically wherever quantities are shown.
+
+**One-time fix for liquids imported before this existed:** the first time you sign in
+after this update, any liquid ingredient stuck with no density at all (unable to
+convert if a recipe ever specified it by weight) gets the same water-like
+approximation filled in automatically — it only touches ingredients genuinely missing
+this value, never overwrites one that's already set.
+
+The recipe importer's own ingredient lines (the "- 8 oz broccoli florets" list, separate
+from the detailed data blocks above) also convert automatically if they still come in
+metric — "- 200 g flour" becomes "7 oz", "- 1 kg chicken breast" becomes "2.2 lb", "- 500
+ml milk" becomes "2.11 cup", and so on, picking whichever American unit reads most
+naturally, the same way the shopping list auto-scales quantities elsewhere. This doesn't
+depend on the AI prompt being followed exactly — it happens in the importer itself, so
+pasted text with metric amounts (an older prompt output, a recipe copied in as-is)
+still comes out in American units.
 
 **One-time cleanup for ingredients from before this existed:** the first time you sign
 in after this update, the app automatically fixes any ingredient whose unit obviously
