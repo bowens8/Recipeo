@@ -420,7 +420,7 @@ function buildIngredientDataFromBlock(block){
   // in raw grams-per-cup regardless of base unit — it's a bridging figure, not itself
   // expressed in the base unit. Computed early since the base-unit decision below
   // (for liquids) needs it.
-  const gramsPerCup =
+  let gramsPerCup =
     Number(kv.grams_per_cup) ||
     Number(kv.grams_per_cup_cooked) ||
     Number(kv.grams_per_cup_dry) ||
@@ -436,14 +436,18 @@ function buildIngredientDataFromBlock(block){
   // bottle of cooking oil, so use "fl oz" instead. Bridge grams -> fl oz using the
   // ingredient's real density if we have it (grams per cup); otherwise fall back to a
   // water-like approximation (close enough for most kitchen liquids) rather than
-  // defaulting to weight ounces for something that's never bought that way.
+  // defaulting to weight ounces for something that's never bought that way. If we had
+  // to approximate, actually save that value as this ingredient's own gramsPerCup too
+  // (not just use it internally here) — otherwise a recipe that later references this
+  // ingredient by weight instead of volume has no way to bridge the two and shows up
+  // as unconverted on the shopping list despite the ingredient looking "complete."
   const OUNCE_IN_GRAMS = 28.3495;
   const FLOZ_IN_ML = 29.5735;
   const CUP_IN_ML = 236.588;
   const looksLikeLiquid = !useEachBase && LIQUID_NAME_PATTERN.test(block.name || '');
-  const gramsPerFlOz = looksLikeLiquid
-    ? (gramsPerCup > 0 ? (gramsPerCup / CUP_IN_ML) * FLOZ_IN_ML : FLOZ_IN_ML)
-    : 0;
+  const gramsPerCupWasExplicit = gramsPerCup > 0;
+  if (looksLikeLiquid && gramsPerCup === 0) gramsPerCup = CUP_IN_ML; // ~water density approximation
+  const gramsPerFlOz = looksLikeLiquid ? (gramsPerCup / CUP_IN_ML) * FLOZ_IN_ML : 0;
 
   // Everything below (custom units, package size, pricing) gets expressed in
   // whichever base unit this resolves to, not always grams.
@@ -499,6 +503,7 @@ function buildIngredientDataFromBlock(block){
     customUnits,
     calories: Math.round(calories * 1000) / 1000,
     gramsPerCup,
+    gramsPerCupWasExplicit, // metadata only — stripped before saving, used to decide whether a re-import should overwrite an existing value
     gramsPerEach,
     packaged: packageWeightG > 0,
     isSpice: false,
@@ -712,6 +717,8 @@ onAuthStateChanged(auth, (user)=>{
     migrateOwnDataToSharedIfNeeded();
     backfillIngredientCreatedAtIfNeeded();
     fixNonsensicalIngredientUnitsIfNeeded();
+    fixMissingLiquidDensityIfNeeded();
+    backfillMealPlanOrderIfNeeded();
   } else {
     state.uid = null;
     appShell.classList.add('hidden');
@@ -897,6 +904,34 @@ async function fixNonsensicalIngredientUnitsIfNeeded(){
   }
 }
 
+// A liquid tracked in fl oz with gramsPerCup still at 0 got stuck there by a bug in
+// the detailed importer (fixed above it) — a water-density approximation was used to
+// pick its calories/package/price at import time but never actually saved onto the
+// ingredient, leaving it unable to bridge to any recipe that specifies it by weight
+// instead of volume. Purely additive (fills in a missing figure, touches no existing
+// quantity), so this doesn't need the same pantry-safety gate as the unit fixes above.
+async function fixMissingLiquidDensityIfNeeded(){
+  try{
+    const CUP_IN_ML = 236.588;
+    const snap = await getDocs(sharedCol(SHARED_INGREDIENTS_COLLECTION));
+    const writes = [];
+    let fixedCount = 0;
+    snap.forEach(d => {
+      const ing = d.data();
+      if (ing.unit !== 'floz') return;
+      if (Number(ing.gramsPerCup) > 0) return; // already has a real or previously-approximated value
+      if (!LIQUID_NAME_PATTERN.test(ing.name||'')) return;
+      writes.push(setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, d.id), { gramsPerCup: CUP_IN_ML }, { merge: true }));
+      fixedCount++;
+    });
+    if (writes.length === 0) return;
+    await Promise.all(writes);
+    toast(`Fixed ${fixedCount} liquid ingredient${fixedCount!==1?'s':''} that couldn't convert between units (missing density)`);
+  } catch(err){
+    console.error('Liquid density backfill failed:', err);
+  }
+}
+
 /* ============================================================
    TABS
    ============================================================ */
@@ -1079,10 +1114,45 @@ document.getElementById('week-next').addEventListener('click', ()=>{
   state.weekStart = addDays(state.weekStart, 7); renderWeekPlan(); renderShoppingList();
 });
 
+const MEAL_TYPE_SORT_ORDER = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+function defaultMealOrder(mealType, existingCountSameType){
+  return (MEAL_TYPE_SORT_ORDER[mealType] ?? 4) * 1000 + existingCountSameType;
+}
+// One-time backfill for meal-plan entries from before ordering existed — assigns a
+// default order (grouped by meal type, in whatever order they're returned within
+// that) so existing plans display sensibly immediately, and become drag-reorderable
+// from then on. Uses a direct fetch rather than the state.mealPlan cache since this
+// runs right after sign-in, before the live listener has necessarily populated it.
+async function backfillMealPlanOrderIfNeeded(){
+  try{
+    const snap = await getDocs(col('mealPlan'));
+    const byDate = {};
+    snap.forEach(d => {
+      const m = d.data();
+      if (m.order != null) return;
+      (byDate[m.date] = byDate[m.date] || []).push({ id: d.id, mealType: m.mealType });
+    });
+    if (Object.keys(byDate).length === 0) return;
+
+    const writes = [];
+    Object.values(byDate).forEach(dayMeals => {
+      const counts = {};
+      dayMeals.forEach(m => {
+        const c = counts[m.mealType] || 0;
+        counts[m.mealType] = c + 1;
+        writes.push(setDoc(doc(db,'users',state.uid,'mealPlan', m.id), { order: defaultMealOrder(m.mealType, c) }, { merge: true }));
+      });
+    });
+    await Promise.all(writes);
+  } catch(err){
+    console.error('Meal plan order backfill failed:', err);
+  }
+}
 function mealsForDate(dateStr){
   return Object.entries(state.mealPlan)
     .filter(([id,m]) => m.date === dateStr)
-    .map(([id,m]) => ({id, ...m}));
+    .map(([id,m]) => ({id, ...m, order: (m.order != null) ? m.order : defaultMealOrder(m.mealType, 0)}))
+    .sort((a,b) => a.order - b.order);
 }
 
 function remainingLeftoverServings(cookMealId){
@@ -1092,6 +1162,45 @@ function remainingLeftoverServings(cookMealId){
     .filter(m => m.type==='leftover' && m.sourceMealId === cookMealId)
     .reduce((s,m)=> s + (Number(m.eatenServings)||0), 0);
   return (Number(cook.batchServings)||0) - (Number(cook.eatenServings)||0) - consumed;
+}
+
+// Drag-and-drop reordering/moving of meal chips on the Week Plan. Module-level since
+// it needs to be visible to both the dragged chip's own listeners and whichever day
+// column / other chip it gets dropped onto.
+let dragMealState = null; // { mealId, sourceDate }
+async function handleMealDrop(mealId, targetDate, targetMealId, insertBefore){
+  const meal = state.mealPlan[mealId];
+  if (!meal) return;
+  // The list of meals already in the target day, excluding the one being dragged
+  // (relevant when reordering within the same day it's already in).
+  const targetDayMeals = mealsForDate(targetDate).filter(m => m.id !== mealId);
+
+  let newOrder;
+  if (targetMealId){
+    const idx = targetDayMeals.findIndex(m => m.id === targetMealId);
+    if (idx === -1){
+      newOrder = targetDayMeals.length ? targetDayMeals[targetDayMeals.length-1].order + 1 : 0;
+    } else {
+      const targetOrder = targetDayMeals[idx].order;
+      if (insertBefore){
+        const prevOrder = idx > 0 ? targetDayMeals[idx-1].order : targetOrder - 2;
+        newOrder = (prevOrder + targetOrder) / 2;
+      } else {
+        const nextOrder = idx < targetDayMeals.length-1 ? targetDayMeals[idx+1].order : targetOrder + 2;
+        newOrder = (targetOrder + nextOrder) / 2;
+      }
+    }
+  } else {
+    // Dropped into empty space / the day column itself — append to the end of that day.
+    newOrder = targetDayMeals.length ? targetDayMeals[targetDayMeals.length-1].order + 1 : 0;
+  }
+
+  try{
+    await setDoc(doc(db,'users',state.uid,'mealPlan', mealId), { date: targetDate, order: newOrder }, { merge: true });
+  } catch(err){
+    console.error('Reordering meal failed:', err);
+    toast("Couldn't move that meal — see console for details");
+  }
 }
 
 function renderWeekPlan(){
@@ -1105,6 +1214,21 @@ function renderWeekPlan(){
     const dateStr = fmtDate(date);
     const dayCol = document.createElement('div');
     dayCol.className = 'day-col' + (isSameDay(date, today) ? ' is-today' : '');
+    dayCol.addEventListener('dragover', (e)=>{
+      if (!dragMealState) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      dayCol.classList.add('drag-over');
+    });
+    dayCol.addEventListener('dragleave', (e)=>{
+      if (!dayCol.contains(e.relatedTarget)) dayCol.classList.remove('drag-over');
+    });
+    dayCol.addEventListener('drop', (e)=>{
+      e.preventDefault();
+      dayCol.classList.remove('drag-over');
+      if (!dragMealState) return;
+      handleMealDrop(dragMealState.mealId, dateStr, null, false); // append to end of this day
+    });
 
     const meals = mealsForDate(dateStr);
     let dayCal = 0;
@@ -1134,6 +1258,8 @@ function renderWeekPlan(){
     meals.forEach(m => {
       const chip = document.createElement('div');
       chip.className = 'meal-chip' + (m.type==='leftover' ? ' leftover' : '');
+      chip.draggable = true;
+      chip.dataset.mealId = m.id;
       const typeIcon = MEAL_TYPE_ICON[m.mealType] || '';
 
       let titleHtml, metaText;
@@ -1150,7 +1276,7 @@ function renderWeekPlan(){
         if (m.type==='cook'){
           metaBits.push(`cooked ${m.batchServings} · eating ${m.eatenServings}`);
           const remain = remainingLeftoverServings(m.id);
-          if (remain > 0) metaBits.push(`${remain} left over`);
+          if (remain > 0) metaBits.push(`${formatQty(remain)} left over`);
         } else {
           metaBits.push(`leftovers · eating ${m.eatenServings}`);
         }
@@ -1178,6 +1304,35 @@ function renderWeekPlan(){
         chip.appendChild(cookBtn);
       }
       chip.addEventListener('click', ()=> openMealModal(dateStr, m.id));
+      chip.addEventListener('dragstart', (e)=>{
+        dragMealState = { mealId: m.id, sourceDate: dateStr };
+        chip.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', m.id); // some browsers require data to be set for drag to work
+      });
+      chip.addEventListener('dragend', ()=>{
+        chip.classList.remove('dragging');
+        document.querySelectorAll('.day-col.drag-over, .meal-chip.drag-over-top, .meal-chip.drag-over-bottom')
+          .forEach(el => el.classList.remove('drag-over','drag-over-top','drag-over-bottom'));
+        dragMealState = null;
+      });
+      chip.addEventListener('dragover', (e)=>{
+        if (!dragMealState || dragMealState.mealId === m.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const before = (e.clientY - chip.getBoundingClientRect().top) < chip.offsetHeight/2;
+        chip.classList.toggle('drag-over-top', before);
+        chip.classList.toggle('drag-over-bottom', !before);
+      });
+      chip.addEventListener('dragleave', ()=> chip.classList.remove('drag-over-top','drag-over-bottom'));
+      chip.addEventListener('drop', (e)=>{
+        e.preventDefault();
+        e.stopPropagation(); // don't also trigger the day column's own drop handler
+        chip.classList.remove('drag-over-top','drag-over-bottom');
+        if (!dragMealState || dragMealState.mealId === m.id) return;
+        const before = (e.clientY - chip.getBoundingClientRect().top) < chip.offsetHeight/2;
+        handleMealDrop(dragMealState.mealId, dateStr, m.id, before);
+      });
       dayCol.appendChild(chip);
     });
 
@@ -1252,7 +1407,7 @@ function openMealModal(dateStr, mealId){
   mealLeftoverSelect.innerHTML = options.map(([id,m])=>{
     const recipe = state.recipes[m.recipeId];
     const remain = remainingLeftoverServings(id);
-    return `<option value="${id}">${escapeHtml(recipe? recipe.name:'?')} — cooked ${m.date} (${remain} left)</option>`;
+    return `<option value="${id}">${escapeHtml(recipe? recipe.name:'?')} — cooked ${m.date} (${formatQty(remain)} left)</option>`;
   }).join('') || '<option value="">No leftovers available</option>';
 
   const deleteBtn = document.getElementById('delete-meal-btn');
@@ -1336,8 +1491,14 @@ document.getElementById('save-meal-btn').addEventListener('click', async ()=>{
     };
   }
   if (state.editing.mealId){
+    const existing = state.mealPlan[state.editing.mealId] || {};
+    data.order = existing.order != null
+      ? existing.order
+      : defaultMealOrder(mealType, mealsForDate(data.date).filter(m => m.mealType === mealType).length);
     await setDoc(doc(db,'users',state.uid,'mealPlan', state.editing.mealId), data);
   } else {
+    const sameTypeCount = mealsForDate(data.date).filter(m => m.mealType === mealType).length;
+    data.order = defaultMealOrder(mealType, sameTypeCount);
     await addDoc(col('mealPlan'), data);
   }
   closeModals();
@@ -2156,7 +2317,7 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
           // specific, and can include pricing/aisle/density data the built-in list
           // doesn't have at all.
           const data = r.detailedMatch
-            ? { ...r.detailedMatch.data, name: r.name, photo: r.photo || null, createdAt: serverTimestamp(), needsReview: false }
+            ? (() => { const { gramsPerCupWasExplicit, ...rest } = r.detailedMatch.data; return { ...rest, name: r.name, photo: r.photo || null, createdAt: serverTimestamp(), needsReview: false }; })()
             : {
                 name: r.name,
                 emoji: r.common ? r.common.emoji : '🛒',
@@ -2332,30 +2493,33 @@ document.getElementById('import-ing-confirm-btn').addEventListener('click', asyn
         // (if the person added one during this import) takes priority; otherwise the
         // existing photo is left untouched.
         const existing = state.ingredients[r.existingId] || {};
+        const { gramsPerCupWasExplicit, ...importedData } = r.data;
         const merged = {
           ...existing,
-          ...r.data,
-          emoji: existing.emoji || r.data.emoji,
+          ...importedData,
+          emoji: existing.emoji || importedData.emoji,
           photo: r.photo || existing.photo || null,
           isSpice: !!existing.isSpice,
           isBlend: !!existing.isBlend,
           blendComponents: existing.blendComponents || [],
-          // Only overwrite an existing density value if this import actually provided
-          // one — otherwise a re-import with no DENSITY_CONVERSION section would
-          // silently erase a value someone had set by hand.
-          gramsPerCup: r.data.gramsPerCup || existing.gramsPerCup || 0,
-          gramsPerEach: r.data.gramsPerEach || existing.gramsPerEach || 0,
+          // Only overwrite an existing density value if this import actually gave an
+          // explicit one — a water-density approximation (used when a liquid had no
+          // real density data) shouldn't silently clobber a value someone corrected
+          // by hand, any more than a re-import with no DENSITY_CONVERSION at all should.
+          gramsPerCup: gramsPerCupWasExplicit ? importedData.gramsPerCup : (existing.gramsPerCup || importedData.gramsPerCup || 0),
+          gramsPerEach: importedData.gramsPerEach || existing.gramsPerEach || 0,
           // Same idea for the base unit itself: only switch it if this import
           // explicitly determined "each" is right (via grams_per_each) — otherwise
           // keep whatever unit the ingredient already had rather than silently
           // reverting an "each"-based ingredient back to grams.
-          unit: r.data.gramsPerEach > 0 ? r.data.unit : (existing.unit || r.data.unit),
-          category: r.data.category || existing.category || ''
+          unit: importedData.gramsPerEach > 0 ? importedData.unit : (existing.unit || importedData.unit),
+          category: importedData.category || existing.category || ''
         };
         await setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, r.existingId), merged);
         updated++;
       } else {
-        await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), { ...r.data, photo: r.photo || null, createdAt: serverTimestamp() });
+        const { gramsPerCupWasExplicit, ...importedData } = r.data;
+        await addDoc(sharedCol(SHARED_INGREDIENTS_COLLECTION), { ...importedData, photo: r.photo || null, createdAt: serverTimestamp() });
         created++;
       }
     }
@@ -3114,10 +3278,14 @@ function ingredientCompletenessStatus(ing){
     if (ing.packaged && !(Number(p.packageSize) > 0)) return true;
     return false;
   });
-  if (missingStores.length === 0){
-    return { level:'green', glyph:'✓', label:'Complete — calories and a price at every store' };
+  const missingGramsPerCup = !(Number(ing.gramsPerCup) > 0);
+  if (missingStores.length === 0 && !missingGramsPerCup){
+    return { level:'green', glyph:'✓', label:'Complete — calories, grams per cup, and a price at every store' };
   }
-  return { level:'yellow', glyph:'!', label:`Missing a price at: ${missingStores.join(', ')}` };
+  const reasons = [];
+  if (missingGramsPerCup) reasons.push('missing grams per cup');
+  if (missingStores.length) reasons.push(`missing a price at: ${missingStores.join(', ')}`);
+  return { level:'yellow', glyph:'!', label: reasons.join(' · ') };
 }
 
 function renderIngredients(){
