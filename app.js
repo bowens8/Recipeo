@@ -1274,11 +1274,11 @@ function renderWeekPlan(){
         titleHtml = `${typeIcon} ${m.type==='leftover'?'♻️ ':''}${escapeHtml(name)}`;
         const metaBits = [];
         if (m.type==='cook'){
-          metaBits.push(`cooked ${m.batchServings} · eating ${m.eatenServings}`);
+          metaBits.push(`cooked ${formatQty(m.batchServings)} · eating ${formatQty(m.eatenServings)}`);
           const remain = remainingLeftoverServings(m.id);
           if (remain > 0) metaBits.push(`${formatQty(remain)} left over`);
         } else {
-          metaBits.push(`leftovers · eating ${m.eatenServings}`);
+          metaBits.push(`leftovers · eating ${formatQty(m.eatenServings)}`);
         }
         metaText = metaBits.join(' · ');
       }
