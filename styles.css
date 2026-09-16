@@ -143,9 +143,14 @@ input[type="file"]{
 .day-cal{font-family:var(--font-mono); font-size:.7rem; color:var(--sage-700);}
 .meal-chip{
   background:var(--sage-50); border:1px solid var(--paper-line); border-radius:9px;
-  padding:8px 9px; font-size:.8rem; cursor:pointer; position:relative;
+  padding:8px 9px; font-size:.8rem; cursor:grab; position:relative;
 }
 .meal-chip:hover{border-color:var(--sage-500);}
+.meal-chip:active{cursor:grabbing;}
+.meal-chip.dragging{opacity:.4;}
+.meal-chip.drag-over-top{box-shadow:inset 0 2px 0 var(--brick);}
+.meal-chip.drag-over-bottom{box-shadow:inset 0 -2px 0 var(--brick);}
+.day-col.drag-over{background:var(--sage-100); outline:2px dashed var(--sage-500); outline-offset:-2px;}
 .meal-chip .chip-title{font-weight:700; display:flex; align-items:center; gap:5px;}
 .chip-ing-icon{display:inline-flex; width:16px; height:16px; border-radius:50%; overflow:hidden; flex-shrink:0; align-items:center; justify-content:center; font-size:.85rem;}
 .chip-ing-icon img{width:100%; height:100%; object-fit:cover;}
@@ -167,6 +172,10 @@ input[type="file"]{
   padding:8px; font-size:.78rem; color:var(--ink-soft); text-align:center;
 }
 .add-meal-btn:hover{border-color:var(--sage-500); color:var(--sage-700);}
+.day-footer-btns{display:flex; gap:6px;}
+.day-footer-btns .add-meal-btn{flex:1;}
+.log-food-btn{border-style:solid; background:var(--sage-50);}
+.log-food-btn:hover{background:var(--sage-100);}
 
 /* ============ Cards / recipes ============ */
 .card-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px;}
