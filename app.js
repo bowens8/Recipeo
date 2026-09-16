@@ -1336,11 +1336,23 @@ function renderWeekPlan(){
       dayCol.appendChild(chip);
     });
 
+    const dayFooter = document.createElement('div');
+    dayFooter.className = 'day-footer-btns';
+
     const addBtn = document.createElement('button');
     addBtn.className = 'add-meal-btn';
     addBtn.textContent = '+ Add meal';
     addBtn.addEventListener('click', ()=> openMealModal(dateStr, null));
-    dayCol.appendChild(addBtn);
+    dayFooter.appendChild(addBtn);
+
+    const logFoodBtn = document.createElement('button');
+    logFoodBtn.className = 'add-meal-btn log-food-btn';
+    logFoodBtn.textContent = '🍎 Log food';
+    logFoodBtn.title = 'Quickly log something you ate — no recipe needed';
+    logFoodBtn.addEventListener('click', ()=> openMealModal(dateStr, null, 'quick'));
+    dayFooter.appendChild(logFoodBtn);
+
+    dayCol.appendChild(dayFooter);
 
     weekGrid.appendChild(dayCol);
   });
@@ -1391,7 +1403,7 @@ mealQuickIngredientSelect.addEventListener('change', (e)=>{
   mealQuickUnitSelect.innerHTML = unitOptionsHtml(ing ? ing.unit : 'g', ing);
 });
 
-function openMealModal(dateStr, mealId){
+function openMealModal(dateStr, mealId, presetType){
   state.editing.mealDate = dateStr;
   state.editing.mealId = mealId;
 
@@ -1434,9 +1446,9 @@ function openMealModal(dateStr, mealId){
     }
     deleteBtn.classList.remove('hidden');
   } else {
-    document.getElementById('meal-modal-title').textContent = 'Add meal';
-    mealTypeSelect.value = 'dinner';
-    setMealType('cook');
+    document.getElementById('meal-modal-title').textContent = presetType === 'quick' ? 'Log a food' : 'Add meal';
+    mealTypeSelect.value = presetType === 'quick' ? 'snack' : 'dinner';
+    setMealType(presetType || 'cook');
     batchServingsInput.value = 4;
     eatenServingsInput.value = 4;
     leftoverServingsInput.value = 1;
@@ -1447,6 +1459,9 @@ function openMealModal(dateStr, mealId){
     deleteBtn.classList.add('hidden');
   }
   openModal('meal-modal');
+  if (presetType === 'quick' && !mealId){
+    setTimeout(()=> document.querySelector('#meal-quick-ingredient-combo .ing-combo-search')?.focus(), 50);
+  }
 }
 
 document.getElementById('save-meal-btn').addEventListener('click', async ()=>{
