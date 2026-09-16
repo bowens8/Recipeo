@@ -230,7 +230,11 @@ Every row on the Ingredients tab has a small colored status dot on the right:
 Hover any dot for a specific reason (e.g. "missing grams per cup · missing a price at:
 Giant Eagle").
 
-## Sorting the ingredient library
+## Sorting the pantry and ingredient library
+
+The **Sort by** dropdown on the Pantry tab reorders that list — Name (A–Z), Grocery
+aisle (same grouping as everywhere else), or Stocked first (whatever you actually have
+some quantity of, at the top).
 
 The **Sort by** dropdown on the Ingredients tab reorders the list — alphabetically
 (A–Z or Z–A), by when it was added (newest or oldest first), by calories (high–low
@@ -279,11 +283,15 @@ feature existed get a sensible default order automatically the first time you si
 after updating.
 
 For things that aren't really a "recipe" — cereal, coffee, a piece of fruit — use the
-**Quick item** option (alongside "Cook something" and "Eat leftovers") when adding a
-meal. Pick an ingredient straight from your Ingredients tab and how much, no recipe
-needed. Quick items count toward that day's calories and toward the shopping list
-exactly like a recipe ingredient would, combining with any of the same ingredient used
-in actual recipes that week.
+**🍎 Log food** button on any day (next to "+ Add meal") for the fastest path: it opens
+straight to the ingredient picker, defaulted to "Snack," with the search box already
+focused so you can start typing immediately. This is the same "Quick item" option also
+available inside the regular "Add meal" flow (alongside "Cook something" and "Eat
+leftovers") if you'd rather set a different meal type there — pick an ingredient
+straight from your Ingredients tab and how much, no recipe needed. Quick items count
+toward that day's calories and toward the shopping list exactly like a recipe
+ingredient would, combining with any of the same ingredient used in actual recipes
+that week.
 
 ## Baking tab
 
