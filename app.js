@@ -671,6 +671,7 @@ function isSameDay(a,b){ return fmtDate(a)===fmtDate(b); }
 /* ============================================================
    AUTH
    ============================================================ */
+const loadingScreen = document.getElementById('loading-screen');
 const authScreen = document.getElementById('auth-screen');
 const appShell = document.getElementById('app-shell');
 const authForm = document.getElementById('auth-form');
@@ -709,6 +710,7 @@ document.getElementById('signout-btn').addEventListener('click', ()=> signOut(au
 
 onAuthStateChanged(auth, (user)=>{
   cleanupListeners();
+  loadingScreen.classList.add('hidden');
   if (user){
     state.uid = user.uid;
     authScreen.classList.add('hidden');
@@ -853,10 +855,7 @@ async function backfillIngredientCreatedAtIfNeeded(){
 // pepper tracked in grams, a spice tracked in grams instead of tsp, oil in grams
 // instead of fl oz. This happens to ingredients that got auto-created blind (no real
 // data behind them) before better import logic existed. Matched purely by name, since
-// that's all we have for these. Deliberately conservative: only touches an ingredient
-// if the signed-in account's own pantry quantity for it is currently 0 — if there's a
-// real number already sitting there, changing the unit without knowing how to convert
-// that number correctly would silently corrupt it, so those are left alone entirely.
+// that's all we have for these.
 const SMART_UNIT_FIXES = [
   { pattern: /\bbell pepper|poblano pepper|jalape[nñ]o pepper|banana pepper|serrano pepper\b/i, unit:'each', emoji:'🫑' },
   { pattern: /\begg(s)?\b/i, unit:'each', emoji:'🥚' },
@@ -867,8 +866,13 @@ const SMART_UNIT_FIXES = [
   { pattern: /\byellow onion|red onion|white onion|sweet onion\b/i, unit:'each', emoji:'🧅' },
   { pattern: /\bavocado(s)?\b/i, unit:'each', emoji:'🥑' },
   { pattern: /\bapple(s)?\b/i, unit:'each', emoji:'🍎' },
-  { pattern: /vegetable oil|canola oil|rice vinegar|apple cider vinegar|white wine vinegar|balsamic vinegar/i, unit:'floz' },
-  { pattern: /baking soda|baking powder|vanilla extract|garlic powder|onion powder|chili powder|\bturmeric\b|\bcumin\b|\bcinnamon\b|\bpaprika\b|\bblack pepper\b|sesame seeds|chia seeds|seasoning blend|spice blend/i, unit:'tsp' },
+  { pattern: /\btomato(es)?\b/i, unit:'each', emoji:'🍅' },
+  { pattern: /\bpotato(es)?\b/i, unit:'each', emoji:'🥔' },
+  { pattern: /\bcarrot(s)?\b/i, unit:'each', emoji:'🥕' },
+  { pattern: /\bgarlic clove(s)?\b/i, unit:'each', emoji:'🧄' },
+  { pattern: /\bbanana(s)?\b/i, unit:'each', emoji:'🍌' },
+  { pattern: LIQUID_NAME_PATTERN, unit:'floz' },
+  { pattern: /baking soda|baking powder|vanilla extract|almond extract|garlic powder|onion powder|chili powder|\bturmeric\b|\bcumin\b|\bcinnamon\b|\bpaprika\b|\bblack pepper\b|\bred pepper flakes\b|sesame seeds|chia seeds|seasoning blend|spice blend|\boregano\b|\bbasil\b|\bthyme\b|\brosemary\b|\bnutmeg\b/i, unit:'tsp' },
 ];
 function smartUnitFixFor(name){
   const found = SMART_UNIT_FIXES.find(f => f.pattern.test(name||''));
@@ -876,6 +880,7 @@ function smartUnitFixFor(name){
 }
 async function fixNonsensicalIngredientUnitsIfNeeded(){
   try{
+    const CUP_IN_ML = 236.588;
     const [ingSnap, pantrySnap] = await Promise.all([
       getDocs(sharedCol(SHARED_INGREDIENTS_COLLECTION)),
       getDocs(col('pantry'))
@@ -883,22 +888,49 @@ async function fixNonsensicalIngredientUnitsIfNeeded(){
     const myPantryQty = {};
     pantrySnap.forEach(d => { myPantryQty[d.id] = Number(d.data().qty) || 0; });
 
-    const writes = [];
+    const ingredientWrites = [];
+    const pantryWrites = [];
     let fixedCount = 0;
+    let clearedCount = 0;
     ingSnap.forEach(d => {
       const ing = d.data();
       if (ing.unit !== 'g') return; // only ingredients still stuck on the old blind-import default
-      if ((myPantryQty[d.id] || 0) !== 0) return; // has real stock — don't touch, can't safely convert
       const fix = smartUnitFixFor(ing.name);
       if (!fix) return;
+      const myQty = myPantryQty[d.id] || 0;
+
       const patch = { unit: fix.unit };
       if (fix.emoji && (!ing.emoji || ing.emoji === '🛒')) patch.emoji = fix.emoji;
-      writes.push(setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, d.id), patch, { merge: true }));
+
+      if (myQty > 0){
+        if (unitCategory(fix.unit) === 'volume'){
+          // Weight -> volume (fl oz, tsp) can be converted with a density figure —
+          // use the ingredient's real one if it has it, otherwise the same
+          // water-like approximation used elsewhere, so the real-world amount on
+          // hand is preserved rather than reset to zero.
+          const gramsPerCupForConversion = Number(ing.gramsPerCup) > 0 ? ing.gramsPerCup : CUP_IN_ML;
+          const converted = convertQty(myQty, 'g', fix.unit, gramsPerCupForConversion, ing.gramsPerEach);
+          if (converted !== null && converted > 0){
+            if (!(Number(ing.gramsPerCup) > 0)) patch.gramsPerCup = gramsPerCupForConversion;
+            pantryWrites.push(setDoc(doc(db,'users',state.uid,'pantry', d.id), { qty: Math.round(converted*100)/100 }, { merge:true }));
+          }
+        } else {
+          // Weight -> each (a bell pepper, an egg...) has no reliable per-item
+          // weight to convert from — clearing it is safer than leaving a
+          // now-meaningless gram figure sitting under the new unit label.
+          pantryWrites.push(deleteDoc(doc(db,'users',state.uid,'pantry', d.id)).catch(()=>{}));
+          clearedCount++;
+        }
+      }
+
+      ingredientWrites.push(setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, d.id), patch, { merge: true }));
       fixedCount++;
     });
-    if (writes.length === 0) return;
-    await Promise.all(writes);
-    toast(`Fixed units on ${fixedCount} ingredient${fixedCount!==1?'s':''} that didn't make sense (e.g. "Bell Pepper" in grams → each)`);
+    if (ingredientWrites.length === 0) return;
+    await Promise.all([...ingredientWrites, ...pantryWrites]);
+    let msg = `Fixed units on ${fixedCount} ingredient${fixedCount!==1?'s':''} that didn't make sense (e.g. "Bell Pepper" in grams → each)`;
+    if (clearedCount) msg += ` — ${clearedCount} had a pantry amount that couldn't convert automatically and needs re-entering`;
+    toast(msg);
   } catch(err){
     console.error('Ingredient unit cleanup failed:', err);
   }
@@ -3233,15 +3265,42 @@ document.getElementById('delete-recipe-btn').addEventListener('click', async ()=
    ============================================================ */
 function renderPantry(){
   const container = document.getElementById('pantry-list');
-  const ids = Object.keys(state.ingredients);
-  if (ids.length===0){
+  let entries = Object.entries(state.ingredients);
+  if (entries.length===0){
     container.innerHTML = '<p class="shop-empty">Add ingredients in the Ingredients tab first, then mark what you have here.</p>';
     return;
   }
-  container.innerHTML = ids.map(id => {
-    const ing = state.ingredients[id];
+
+  const sortMode = document.getElementById('pantry-sort-select').value || 'name-asc';
+  entries = entries.slice().sort(([idA, a], [idB, b]) => {
+    switch (sortMode){
+      case 'stocked-first': {
+        const haveA = Number(state.pantry[idA]?.qty) > 0, haveB = Number(state.pantry[idB]?.qty) > 0;
+        if (haveA !== haveB) return haveA ? -1 : 1;
+        return (a.name||'').localeCompare(b.name||'');
+      }
+      case 'aisle': {
+        const orderDelta = GROCERY_CATEGORY_ORDER.indexOf(inferGroceryCategory(a)) - GROCERY_CATEGORY_ORDER.indexOf(inferGroceryCategory(b));
+        if (orderDelta !== 0) return orderDelta;
+        return (a.name||'').localeCompare(b.name||'');
+      }
+      case 'name-asc':
+      default: return (a.name||'').localeCompare(b.name||'');
+    }
+  });
+
+  let lastAisleCategory = null;
+  container.innerHTML = entries.map(([id, ing]) => {
+    let aisleHeaderHtml = '';
+    if (sortMode === 'aisle'){
+      const cat = inferGroceryCategory(ing);
+      if (cat !== lastAisleCategory){
+        lastAisleCategory = cat;
+        aisleHeaderHtml = `<div class="shop-aisle-header">${escapeHtml(cat)}</div>`;
+      }
+    }
     const qty = state.pantry[id]?.qty ?? '';
-    return `<div class="pantry-item" data-id="${id}">
+    return `${aisleHeaderHtml}<div class="pantry-item" data-id="${id}">
       <span class="p-emoji">${ingredientIconHtml(ing)}</span>
       <span class="p-name">${escapeHtml(ing.name)}</span>
       <input type="number" class="p-qty" min="0" step="any" value="${qty}" placeholder="0" />
@@ -3261,6 +3320,7 @@ function renderPantry(){
     });
   });
 }
+document.getElementById('pantry-sort-select').addEventListener('change', renderPantry);
 
 /* ============================================================
    RENDER: INGREDIENTS
