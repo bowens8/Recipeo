@@ -13,8 +13,15 @@
 </head>
 <body>
 
+<!-- ===================== LOADING SCREEN ===================== -->
+<!-- Shown while Firebase determines whether there's already a signed-in session —
+     avoids ever flashing the auth screen for someone who's already logged in. -->
+<div id="loading-screen" class="loading-screen">
+  <span class="loading-brand-mark">🥕</span>
+</div>
+
 <!-- ===================== AUTH SCREEN ===================== -->
-<div id="auth-screen" class="auth-screen">
+<div id="auth-screen" class="auth-screen hidden">
   <div class="auth-card">
     <div class="auth-brand">
       <span class="auth-brand-mark">🥕</span>
@@ -150,8 +157,17 @@
     <section id="tab-pantry" class="tab-panel">
       <div class="panel-head">
         <h2>Pantry</h2>
-        <span class="panel-sub">What you already have on hand. Subtracted automatically from your shopping list.</span>
+        <div class="panel-head-right">
+          <label class="sort-select-wrap">Sort by
+            <select id="pantry-sort-select">
+              <option value="name-asc">Name (A–Z)</option>
+              <option value="aisle">Grocery aisle</option>
+              <option value="stocked-first">Stocked first</option>
+            </select>
+          </label>
+        </div>
       </div>
+      <p class="panel-sub" style="margin:-14px 0 14px;">What you already have on hand. Subtracted automatically from your shopping list.</p>
       <div id="pantry-list" class="pantry-list"></div>
     </section>
 
