@@ -22,6 +22,8 @@
 
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
+html{background:var(--sage-50);}
+html,body{overscroll-behavior-y:none;}
 body{
   background: var(--sage-50);
   background-image:
@@ -30,6 +32,7 @@ body{
   color: var(--ink);
   font-family: var(--font-body);
   min-height:100vh;
+  min-height:100dvh;
 }
 .hidden{display:none !important;}
 button{font-family:inherit;cursor:pointer;}
@@ -80,13 +83,13 @@ input[type="file"]{
 
 /* ============ Auth screen ============ */
 .loading-screen{
-  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center;
   background:var(--sage-50);
 }
 .loading-brand-mark{font-size:2.6rem; animation:loading-pulse 1.3s ease-in-out infinite;}
 @keyframes loading-pulse{ 0%,100%{opacity:.4; transform:scale(.94);} 50%{opacity:1; transform:scale(1);} }
 .auth-screen{
-  min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+  min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:20px;
 }
 .auth-card{
   background:var(--paper); border:1.5px solid var(--paper-line); border-radius:18px;
@@ -105,9 +108,12 @@ input[type="file"]{
 .auth-buttons{display:flex; flex-direction:column; gap:10px;}
 
 /* ============ Shell ============ */
-.app-shell{min-height:100vh; display:flex; flex-direction:column;}
+.app-shell{min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;}
 .topbar{
   display:flex; align-items:center; gap:26px; padding:14px 28px;
+  padding-top:max(14px, env(safe-area-inset-top));
+  padding-left:max(28px, env(safe-area-inset-left));
+  padding-right:max(28px, env(safe-area-inset-right));
   background:var(--paper); border-bottom:1.5px solid var(--paper-line);
   position:sticky; top:0; z-index:20;
 }
@@ -150,6 +156,7 @@ input[type="file"]{
 .meal-chip{
   background:var(--sage-50); border:1px solid var(--paper-line); border-radius:9px;
   padding:8px 9px; font-size:.8rem; cursor:grab; position:relative;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
 }
 .meal-chip:hover{border-color:var(--sage-500);}
 .meal-chip:active{cursor:grabbing;}
