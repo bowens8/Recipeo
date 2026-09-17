@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="RecipeMe" />
+<meta name="theme-color" content="#EEF1E6" />
 <title>RecipeMe — weekly meal planning</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,6 +92,15 @@
       <div class="panel-head">
         <h2>Shopping List</h2>
         <div class="panel-head-right">
+          <label class="sort-select-wrap">Shopping for
+            <select id="shopping-range-select">
+              <option value="1">This week</option>
+              <option value="2">Next 2 weeks</option>
+              <option value="3">Next 3 weeks</option>
+              <option value="4">Next 4 weeks</option>
+              <option value="all">Every planned meal</option>
+            </select>
+          </label>
           <label class="sort-select-wrap">Sort by
             <select id="shopping-sort-select">
               <option value="default">Recommended</option>
@@ -98,7 +111,7 @@
           <button id="shopping-mode-btn" class="btn btn-ghost">Start Shopping</button>
         </div>
       </div>
-      <p class="panel-sub" style="margin:-14px 0 14px;">For the week shown in Week Plan — pantry items already subtracted.</p>
+      <p class="panel-sub" id="shopping-range-sub" style="margin:-14px 0 14px;">For the week shown in Week Plan — pantry items already subtracted.</p>
       <div class="store-picker">
         <span class="store-picker-label">Shop from:</span>
         <div id="store-checks" class="store-checks"></div>
