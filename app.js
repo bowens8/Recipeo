@@ -188,7 +188,11 @@ const GROCERY_CATEGORY_KEYWORDS = {
   'Canned Goods': ['canned','broth','stock','tomato sauce','tomato paste'],
   'Condiments & Sauces': ['ketchup','mustard','mayo','soy sauce','hot sauce','salad dressing',
     'oil','vinegar','bbq sauce','sauce','syrup','honey','jam','jelly','peanut butter'],
-  'Beverages': ['juice','soda','coffee','tea','wine','beer','sparkling water'],
+  'Beverages': ['juice','soda','coffee','tea','wine','beer','sparkling water',
+    // compound phrases that would otherwise lose to a shorter Produce keyword
+    // (e.g. "apple" in "Apple Juice") under a first-category-wins check
+    'apple juice','orange juice','grape juice','cranberry juice','pineapple juice',
+    'lemon juice','lime juice','tomato juice','apple cider'],
   'Pantry & Dry Goods': ['flour','sugar','rice','pasta','oat','cereal','bean','lentil','quinoa',
     'bread crumb','breadcrumb','baking powder','baking soda','yeast','cornstarch','panko'],
 };
@@ -196,11 +200,21 @@ function inferGroceryCategory(ing){
   if (ing.category) return ing.category; // manual override always wins
   if (ing.isSpice || ing.isBlend) return 'Spices & Seasonings';
   const name = (ing.name||'').toLowerCase();
+  // Longest matching keyword wins, not whichever category happens to be checked
+  // first — otherwise something like "Apple Juice" always loses to Produce's
+  // "apple" before Beverages' own keywords ever get a chance.
+  let bestCategory = null, bestLen = 0;
   for (const cat of GROCERY_CATEGORY_ORDER){
     const keywords = GROCERY_CATEGORY_KEYWORDS[cat];
-    if (keywords && keywords.some(k => name.includes(k))) return cat;
+    if (!keywords) continue;
+    for (const k of keywords){
+      if (k.length > bestLen && name.includes(k)){
+        bestLen = k.length;
+        bestCategory = cat;
+      }
+    }
   }
-  return 'Other';
+  return bestCategory || 'Other';
 }
 
 state.storeSettings = STORES.reduce((o,s)=> (o[s]=true, o), {}); // which stores are "in play"
@@ -290,7 +304,7 @@ function convertToAmericanUnitIfMetric(qty, unit){
   // Passing a US-style "preferredUnit" forces pickDisplayUnit to choose from the US
   // table (oz/lb or cup/fl oz/tbsp/tsp) instead of leaning back into metric.
   const picked = pickDisplayUnit(baseQty, category, category === 'weight' ? 'oz' : 'cup');
-  return { qty: Math.round(picked.qty * 100) / 100, unit: picked.unit };
+  return { qty: Math.round(picked.qty * 10) / 10, unit: picked.unit };
 }
 function parseRecipeImportText(text){
   const lines = text.split(/\r?\n/).map(l => l.trim());
@@ -666,6 +680,16 @@ function addDays(d, n){ const r = new Date(d); r.setDate(r.getDate()+n); return 
 function fmtDate(d){ return d.toISOString().slice(0,10); }
 function fmtDateLabel(d){ return d.toLocaleDateString(undefined,{month:'short', day:'numeric'}); }
 function weekDates(){ return Array.from({length:7}, (_,i)=> addDays(state.weekStart, i)); }
+// Returns the shopping list's active date range as an array of "YYYY-MM-DD" strings,
+// or null to mean "every planned meal, no date filter at all" — lets the shopping
+// list cover more than just whatever single week the Week Plan happens to be
+// showing (e.g. shopping once for two weeks of planned meals at a time).
+function shoppingListDates(){
+  const rangeVal = document.getElementById('shopping-range-select').value || '1';
+  if (rangeVal === 'all') return null;
+  const weeks = Number(rangeVal) || 1;
+  return Array.from({length: weeks*7}, (_,i) => fmtDate(addDays(state.weekStart, i)));
+}
 function isSameDay(a,b){ return fmtDate(a)===fmtDate(b); }
 
 /* ============================================================
@@ -1013,13 +1037,43 @@ function toast(msg){
    ============================================================ */
 const backdrop = document.getElementById('modal-backdrop');
 
+// Shared across the three independent overlay systems below (regular modals, the
+// crop overlay, and Cook Mode) since they can be open at the same time — e.g.
+// cropping a photo while the recipe editor is open behind it. Reference-counted so
+// closing one doesn't unlock scrolling while another is still up. Uses the
+// position:fixed trick rather than plain overflow:hidden because iOS Safari doesn't
+// reliably block touch-scroll on the body with overflow:hidden alone.
+let scrollLockCount = 0;
+let scrollLockY = 0;
+function lockBodyScroll(){
+  if (scrollLockCount === 0){
+    scrollLockY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollLockY}px`;
+    document.body.style.width = '100%';
+  }
+  scrollLockCount++;
+}
+function unlockBodyScroll(){
+  scrollLockCount = Math.max(0, scrollLockCount - 1);
+  if (scrollLockCount === 0){
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    window.scrollTo(0, scrollLockY);
+  }
+}
+
 function openModal(id){
   backdrop.classList.remove('hidden');
   backdrop.querySelectorAll('.modal').forEach(m=>m.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
+  lockBodyScroll();
 }
 function closeModals(){
+  if (backdrop.classList.contains('hidden')) return; // already closed — don't double-unlock
   backdrop.classList.add('hidden');
+  unlockBodyScroll();
 }
 backdrop.addEventListener('click', (e)=>{ if (e.target === backdrop) closeModals(); });
 document.querySelectorAll('.modal-close').forEach(b=>{
@@ -1029,11 +1083,13 @@ document.querySelectorAll('.modal-close').forEach(b=>{
 /* ---- crop / zoom overlay: fully independent of the modal system above, so it can
    sit on top of the recipe/ingredient editor without ever touching it ---- */
 const cropOverlay = document.getElementById('crop-overlay');
-function showCropOverlay(){ cropOverlay.classList.remove('hidden'); }
+function showCropOverlay(){ cropOverlay.classList.remove('hidden'); lockBodyScroll(); }
 function hideCropOverlay(){
+  if (cropOverlay.classList.contains('hidden')) return; // already closed — don't double-unlock
   cropOverlay.classList.add('hidden');
   if (typeof cropperInstance !== 'undefined' && cropperInstance){ cropperInstance.destroy(); cropperInstance = null; }
   cropConfirmHandler = null;
+  unlockBodyScroll();
 }
 cropOverlay.addEventListener('click', (e)=>{ if (e.target === cropOverlay) hideCropOverlay(); });
 document.getElementById('crop-close-x').addEventListener('click', hideCropOverlay);
@@ -1235,6 +1291,80 @@ async function handleMealDrop(mealId, targetDate, targetMealId, insertBefore){
   }
 }
 
+// Touch-based drag-and-drop, supplementing the native HTML5 DnD handlers above.
+// Safari doesn't support the native Drag and Drop API via touch at all (a
+// long-standing WebKit gap — dragstart/dragover/drop simply never fire from a touch
+// gesture on iOS), so meal chips would be completely undraggable there without this.
+// Starts dragging on a long-press rather than immediately on touchmove, matching how
+// iOS's own apps handle list reordering — this is what lets a normal finger-swipe
+// still scroll the page instead of every touch on a chip being mistaken for a drag.
+function attachTouchDragHandlers(chip, mealId, dateStr){
+  const LONG_PRESS_MS = 400;
+  const MOVE_CANCEL_PX = 10;
+  let pressTimer = null;
+  let startX = 0, startY = 0;
+  let dragging = false;
+
+  function clearPressTimer(){ if (pressTimer){ clearTimeout(pressTimer); pressTimer = null; } }
+  function clearDragFeedback(){
+    document.querySelectorAll('.day-col.drag-over, .meal-chip.drag-over-top, .meal-chip.drag-over-bottom')
+      .forEach(el => el.classList.remove('drag-over','drag-over-top','drag-over-bottom'));
+  }
+  function endDrag(){ dragging = false; chip.classList.remove('dragging'); clearDragFeedback(); }
+
+  chip.addEventListener('touchstart', (e)=>{
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY;
+    clearPressTimer();
+    pressTimer = setTimeout(()=>{ dragging = true; chip.classList.add('dragging'); }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  chip.addEventListener('touchmove', (e)=>{
+    const t = e.touches[0];
+    if (!dragging){
+      // Moved before the long-press fired — this is a normal scroll/tap gesture, not
+      // a drag. Cancel the pending long-press and let the browser scroll as usual.
+      if (Math.abs(t.clientX-startX) > MOVE_CANCEL_PX || Math.abs(t.clientY-startY) > MOVE_CANCEL_PX) clearPressTimer();
+      return;
+    }
+    e.preventDefault(); // actively dragging now — suppress page scroll
+    clearDragFeedback();
+    const target = document.elementFromPoint(t.clientX, t.clientY);
+    const targetChip = target && target.closest('.meal-chip');
+    const targetDay = target && target.closest('.day-col');
+    if (targetChip && targetChip !== chip){
+      const rect = targetChip.getBoundingClientRect();
+      const before = (t.clientY - rect.top) < rect.height/2;
+      targetChip.classList.toggle('drag-over-top', before);
+      targetChip.classList.toggle('drag-over-bottom', !before);
+    } else if (targetDay){
+      targetDay.classList.add('drag-over');
+    }
+  }, { passive: false });
+
+  chip.addEventListener('touchend', (e)=>{
+    clearPressTimer();
+    if (!dragging){ return; } // just a tap — the normal click handler opens the meal
+    const t = e.changedTouches[0];
+    const target = document.elementFromPoint(t.clientX, t.clientY);
+    const targetChip = target && target.closest('.meal-chip');
+    const targetDay = target && target.closest('.day-col');
+    endDrag();
+    if (targetChip && targetChip !== chip){
+      const targetDateStr = targetChip.closest('.day-col')?.dataset.date;
+      const rect = targetChip.getBoundingClientRect();
+      const before = (t.clientY - rect.top) < rect.height/2;
+      if (targetDateStr) handleMealDrop(mealId, targetDateStr, targetChip.dataset.mealId, before);
+    } else if (targetDay){
+      handleMealDrop(mealId, targetDay.dataset.date, null, false);
+    }
+    e.preventDefault(); // a completed drag shouldn't also trigger the click-to-open handler
+  });
+
+  chip.addEventListener('touchcancel', ()=>{ clearPressTimer(); endDrag(); });
+}
+
 function renderWeekPlan(){
   const dates = weekDates();
   weekLabel.textContent = `${fmtDateLabel(dates[0])} – ${fmtDateLabel(dates[6])}`;
@@ -1246,6 +1376,7 @@ function renderWeekPlan(){
     const dateStr = fmtDate(date);
     const dayCol = document.createElement('div');
     dayCol.className = 'day-col' + (isSameDay(date, today) ? ' is-today' : '');
+    dayCol.dataset.date = dateStr;
     dayCol.addEventListener('dragover', (e)=>{
       if (!dragMealState) return;
       e.preventDefault();
@@ -1365,6 +1496,7 @@ function renderWeekPlan(){
         const before = (e.clientY - chip.getBoundingClientRect().top) < chip.offsetHeight/2;
         handleMealDrop(dragMealState.mealId, dateStr, m.id, before);
       });
+      attachTouchDragHandlers(chip, m.id, dateStr);
       dayCol.appendChild(chip);
     });
 
@@ -1644,12 +1776,20 @@ function cheapestOption(ing, neededQtyInIngUnit){
 function renderShoppingList(){
   const container = document.getElementById('shopping-list');
   const totalEl = document.getElementById('shopping-total');
-  const dates = weekDates().map(fmtDate);
+  const dates = shoppingListDates(); // array of date strings, or null = every planned meal
+  const rangeVal = document.getElementById('shopping-range-select').value || '1';
+  const subEl = document.getElementById('shopping-range-sub');
+  if (subEl){
+    const rangeText = rangeVal === 'all' ? 'every meal you\'ve planned, any date'
+      : rangeVal === '1' ? 'the week shown in Week Plan'
+      : `the next ${rangeVal} weeks, starting from the week shown in Week Plan`;
+    subEl.textContent = `For ${rangeText} — pantry items already subtracted.`;
+  }
   const neededBase = {};   // ingredientId -> qty, in base units (grams / ml / count)
   const unconverted = {};  // "ingredientId__unit" -> {ingredientId, unit, qty} — genuinely different unit family
 
   Object.values(state.mealPlan).forEach(m => {
-    if (!dates.includes(m.date)) return;
+    if (dates && !dates.includes(m.date)) return;
 
     if (m.type === 'quick'){
       const ing = state.ingredients[m.ingredientId];
@@ -1851,7 +1991,7 @@ function formatQty(n){
   if (!n || n <= 0) return '0';
   const nearestHalf = Math.round(n * 2) / 2; // nearest 0, 0.5, 1, 1.5, 2, ...
   const value = Math.abs(n - nearestHalf) < CLOSE_ENOUGH ? nearestHalf : n;
-  const rounded = Math.round(value * 100) / 100; // avoid stray floating-point tails either way
+  const rounded = Math.round(value * 10) / 10; // at most one decimal place (tenths)
   return rounded === 0 ? '<1' : rounded.toString();
 }
 
@@ -2042,6 +2182,7 @@ function renderRecipes(){
 document.getElementById('recipe-sort-select').addEventListener('change', renderRecipes);
 document.getElementById('baking-sort-select').addEventListener('change', renderRecipes);
 document.getElementById('shopping-sort-select').addEventListener('change', renderShoppingList);
+document.getElementById('shopping-range-select').addEventListener('change', renderShoppingList);
 
 document.getElementById('new-recipe-btn').addEventListener('click', ()=> openRecipeModal(null));
 document.getElementById('new-baking-btn').addEventListener('click', ()=> openRecipeModal(null, { presetBaking: true }));
@@ -2672,9 +2813,11 @@ function openCookMode(recipeId, servingsOverride){
 
   document.getElementById('cook-overlay').classList.remove('hidden');
   document.getElementById('cook-overlay').scrollTop = 0;
+  lockBodyScroll();
 }
 document.getElementById('cook-close-btn').addEventListener('click', ()=>{
   document.getElementById('cook-overlay').classList.add('hidden');
+  unlockBodyScroll();
 });
 document.getElementById('cook-done-btn').addEventListener('click', async ()=>{
   const recipeId = state.editing.cookingRecipeId;
@@ -2700,6 +2843,7 @@ document.getElementById('cook-done-btn').addEventListener('click', async ()=>{
     await Promise.all(writes);
     toast(`Pantry updated — ingredients for ${r.name} removed`);
     document.getElementById('cook-overlay').classList.add('hidden');
+    unlockBodyScroll();
   } catch(err){
     console.error('"I cooked this" failed:', err);
     toast("Couldn't update your pantry — see console for details");
