@@ -111,9 +111,9 @@ input[type="file"]{
 .app-shell{min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;}
 .topbar{
   display:flex; align-items:center; gap:26px; padding:14px 28px;
-  padding-top:max(14px, env(safe-area-inset-top));
-  padding-left:max(28px, env(safe-area-inset-left));
-  padding-right:max(28px, env(safe-area-inset-right));
+  padding-top:calc(14px + env(safe-area-inset-top, 0px));
+  padding-left:calc(28px + env(safe-area-inset-left, 0px));
+  padding-right:calc(28px + env(safe-area-inset-right, 0px));
   background:var(--paper); border-bottom:1.5px solid var(--paper-line);
   position:sticky; top:0; z-index:20;
 }
@@ -582,7 +582,8 @@ input[type="file"]{
 }
 .cook-header{
   position:sticky; top:0; z-index:2; background:var(--paper); border-bottom:1.5px solid var(--paper-line);
-  padding:14px 20px; display:flex; align-items:center; gap:14px;
+  padding:14px 20px; padding-top:calc(14px + env(safe-area-inset-top, 0px));
+  display:flex; align-items:center; gap:14px;
 }
 .cook-header h2{flex:1; text-align:center; font-size:1.15rem;}
 .cook-servings-label{font-size:.78rem; color:var(--ink-soft); font-family:var(--font-mono); min-width:34px; text-align:right;}
