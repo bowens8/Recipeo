@@ -18,6 +18,7 @@ const state = {
   mealPlan: {},       // id -> {date, type, recipeId, batchServings, eatenServings, sourceMealId}
   favorites: {},       // recipeId -> true, per-account (not shared — everyone's favorites are their own)
   weekStart: startOfWeek(new Date()),
+  planDays: 7,   // how many days the Week Plan shows at once — persisted per account
   shoppingMode: false,   // transient, not persisted
   unsubs: [],
   editing: { recipeId: null, ingredientId: null, mealId: null, mealDate: null }
@@ -679,7 +680,7 @@ function startOfWeek(d){
 function addDays(d, n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
 function fmtDate(d){ return d.toISOString().slice(0,10); }
 function fmtDateLabel(d){ return d.toLocaleDateString(undefined,{month:'short', day:'numeric'}); }
-function weekDates(){ return Array.from({length:7}, (_,i)=> addDays(state.weekStart, i)); }
+function weekDates(){ return Array.from({length: state.planDays}, (_,i)=> addDays(state.weekStart, i)); }
 // Returns the shopping list's active date range as an array of "YYYY-MM-DD" strings,
 // or null to mean "every planned meal, no date filter at all" — lets the shopping
 // list cover more than just whatever single week the Week Plan happens to be
@@ -732,6 +733,17 @@ function friendlyAuthError(code){
 }
 document.getElementById('signout-btn').addEventListener('click', ()=> signOut(auth));
 
+// Same reflow-forcing workaround as above, for the other common moments this class of
+// stale env(safe-area-inset-*) bug tends to show up on iOS: coming back to the tab
+// after it was backgrounded, and Safari restoring the page from its back-forward cache.
+function forceTopbarReflow(){
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{ void document.querySelector('.topbar')?.offsetHeight; });
+  });
+}
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) forceTopbarReflow(); });
+window.addEventListener('pageshow', (e)=>{ if (e.persisted) forceTopbarReflow(); });
+
 onAuthStateChanged(auth, (user)=>{
   cleanupListeners();
   loadingScreen.classList.add('hidden');
@@ -739,6 +751,7 @@ onAuthStateChanged(auth, (user)=>{
     state.uid = user.uid;
     authScreen.classList.add('hidden');
     appShell.classList.remove('hidden');
+    forceTopbarReflow();
     attachListeners();
     migrateOwnDataToSharedIfNeeded();
     backfillIngredientCreatedAtIfNeeded();
@@ -808,6 +821,13 @@ function attachListeners(){
     }
     renderShoppingList();
     renderStoreChecks();
+  }));
+  state.unsubs.push(onSnapshot(doc(db,'users',state.uid,'settings','planView'), snap => {
+    if (snap.exists() && snap.data().days){
+      state.planDays = Number(snap.data().days) || 7;
+      planDaysSelect.value = String(state.planDays);
+      renderWeekPlan();
+    }
   }));
 }
 
@@ -1194,12 +1214,19 @@ function blendBreakdownHtml(blendIng, neededQtyInOwnUnit){
 const weekLabel = document.getElementById('week-label');
 const weekGrid = document.getElementById('week-grid');
 const weekCaloriesEl = document.getElementById('week-calories');
+const planDaysSelect = document.getElementById('plan-days-select');
 
 document.getElementById('week-prev').addEventListener('click', ()=>{
-  state.weekStart = addDays(state.weekStart, -7); renderWeekPlan(); renderShoppingList();
+  state.weekStart = addDays(state.weekStart, -state.planDays); renderWeekPlan(); renderShoppingList();
 });
 document.getElementById('week-next').addEventListener('click', ()=>{
-  state.weekStart = addDays(state.weekStart, 7); renderWeekPlan(); renderShoppingList();
+  state.weekStart = addDays(state.weekStart, state.planDays); renderWeekPlan(); renderShoppingList();
+});
+planDaysSelect.addEventListener('change', async ()=>{
+  state.planDays = Number(planDaysSelect.value) || 7;
+  renderWeekPlan();
+  try{ await setDoc(doc(db,'users',state.uid,'settings','planView'), { days: state.planDays }); }
+  catch(err){ console.error('Saving plan-days setting failed:', err); }
 });
 
 const MEAL_TYPE_SORT_ORDER = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
@@ -1367,7 +1394,7 @@ function attachTouchDragHandlers(chip, mealId, dateStr){
 
 function renderWeekPlan(){
   const dates = weekDates();
-  weekLabel.textContent = `${fmtDateLabel(dates[0])} – ${fmtDateLabel(dates[6])}`;
+  weekLabel.textContent = `${fmtDateLabel(dates[0])} – ${fmtDateLabel(dates[dates.length-1])}`;
   weekGrid.innerHTML = '';
   const today = new Date();
   let weekTotalCal = 0;
