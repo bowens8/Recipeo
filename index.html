@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="RecipeMe" />
 <meta name="theme-color" content="#EEF1E6" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+<link rel="manifest" href="manifest.json" />
 <title>RecipeMe — weekly meal planning</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -82,6 +87,13 @@
           <h2 id="week-label">This Week</h2>
           <button id="week-next" class="icon-btn">→</button>
         </div>
+        <label class="sort-select-wrap">Show
+          <select id="plan-days-select">
+            <option value="7">7 days</option>
+            <option value="10">10 days</option>
+            <option value="14">14 days</option>
+          </select>
+        </label>
         <div class="week-calories" id="week-calories"></div>
       </div>
       <div id="week-grid" class="week-grid"></div>
