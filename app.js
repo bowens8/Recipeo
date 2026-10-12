@@ -4537,3 +4537,4 @@ document.getElementById('crop-confirm-btn').addEventListener('click', ()=>{
   }
 });
 document.getElementById('crop-cancel-btn').addEventListener('click', hideCropOverlay);
+
