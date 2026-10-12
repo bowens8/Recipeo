@@ -253,8 +253,26 @@ input[type="file"]{
 }
 .p-emoji img{width:100%; height:100%; object-fit:cover;}
 .pantry-item .p-name{flex:1; font-weight:600; font-size:.88rem;}
-.pantry-item input{width:70px; padding:5px 7px; font-family:var(--font-mono); font-size:.82rem;}
-.pantry-item .p-unit{font-size:.72rem; color:var(--ink-soft); width:34px;}
+.pantry-item.stocked{border-color:var(--sage-300, var(--paper-line)); background:var(--sage-100, var(--paper));}
+.p-controls{display:inline-flex; align-items:center; gap:4px; flex-shrink:0;}
+.pantry-item input.p-qty{width:58px; padding:6px 4px; text-align:center; font-family:var(--font-mono); font-size:.85rem;}
+.p-step{width:30px; height:30px; border-radius:8px; border:1.5px solid var(--paper-line); background:var(--paper); font-size:1.1rem; line-height:1; cursor:pointer; color:inherit;}
+.p-step:active{transform:scale(.94);}
+.p-unit-select{padding:5px 2px; font-size:.75rem; max-width:64px; border-radius:8px; border:1.5px solid var(--paper-line); background:var(--paper); color:inherit;}
+.pantry-search-row{display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;}
+.pantry-search-row input{flex:1; min-width:200px; padding:10px 12px; font-size:1rem;}
+.pantry-summary{font-size:.78rem; color:var(--ink-soft);}
+/* purchase review */
+.shop-review-rows{display:flex; flex-direction:column; gap:8px; margin:10px 0 14px;}
+.shop-review-row{display:grid; grid-template-columns:34px 1fr auto; gap:4px 10px; align-items:center; border:1.5px solid var(--paper-line); border-radius:11px; padding:8px 10px;}
+.sr-name{font-weight:600; font-size:.9rem; display:flex; flex-direction:column;}
+.sr-need{font-weight:400; font-size:.74rem; color:var(--ink-soft);}
+.sr-entry{display:inline-flex; align-items:center; gap:4px;}
+.sr-entry .sr-qty{width:66px; padding:6px 4px; text-align:center; font-family:var(--font-mono);}
+.sr-entry .sr-unit{padding:5px 2px; font-size:.78rem; max-width:70px;}
+.sr-diff{grid-column:2 / 4; font-size:.76rem; color:var(--ink-soft);}
+.sr-diff.ok{color:#3b7a3b;} .sr-diff.short{color:#b4531f;} .sr-diff.bad{color:#b00020;}
+.shop-review-extra{display:flex; flex-direction:column; gap:6px; margin-bottom:8px;}
 
 /* ============ Spices tab ============ */
 .spice-section-title{font-size:1.1rem; margin-bottom:4px;}
@@ -679,4 +697,16 @@ input[type="file"]{
   .ing-row{grid-template-columns:34px 1fr 62px 78px 24px; gap:6px; padding:8px 10px;}
   .base-spice-list{grid-template-columns:1fr;}
   .pantry-list{grid-template-columns:1fr;}
+}
+
+.meal-chip.note { border-style: dashed; background: transparent; }
+.meal-chip.note .chip-meta:empty { display: none; }
+
+@media (max-width:600px){
+  .pantry-item{flex-wrap:wrap;}
+  .pantry-item .p-name{flex-basis:calc(100% - 50px);}
+  .p-controls{margin-left:40px;}
+  .shop-review-row{grid-template-columns:34px 1fr;}
+  .sr-entry{grid-column:1 / 3;}
+  .sr-diff{grid-column:1 / 3;}
 }
