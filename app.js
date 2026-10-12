@@ -757,6 +757,7 @@ onAuthStateChanged(auth, (user)=>{
     backfillIngredientCreatedAtIfNeeded();
     fixNonsensicalIngredientUnitsIfNeeded();
     fixMissingLiquidDensityIfNeeded();
+    fixDensityGapsIfNeeded();
     backfillMealPlanOrderIfNeeded();
   } else {
     state.uid = null;
@@ -1005,6 +1006,111 @@ async function fixMissingLiquidDensityIfNeeded(){
     toast(`Fixed ${fixedCount} liquid ingredient${fixedCount!==1?'s':''} that couldn't convert between units (missing density)`);
   } catch(err){
     console.error('Liquid density backfill failed:', err);
+  }
+}
+
+
+// ---- Density / count-weight backfill ---------------------------------------------
+// Many ingredients were imported without "grams per cup" (so tsp/tbsp/cup lines in recipes
+// can't convert to the ingredient's oz/each) or without "grams per each" (so "2 each" lines
+// can't convert to oz). This fills ONLY blank values from a built-in table of typical
+// figures (never overwrites anything already set) and repairs a few ingredients whose
+// "each" data was stored per-gram by mistake (eggs, scallions, cucumber, garlic cloves).
+// Estimates are marked on the record (autoFilled) so they can be reviewed later.
+const DENSITY_DEFAULTS = [
+  [/^(hot |cold |warm )?water$/i, {gpc:236.588}],
+  [/ancho/i, {gpc:30, gpe:14}], [/guajillo/i, {gpc:25, gpe:5}], [/arbol|árbol/i, {gpc:25, gpe:1}],
+  [/bay leaves/i, {gpc:20, gpe:0.2}], [/cajun/i, {gpc:130}], [/cayenne/i, {gpc:100}],
+  [/chipotle powder/i, {gpc:110}], [/garlic powder/i, {gpc:150}], [/onion powder/i, {gpc:115}],
+  [/cinnamon/i, {gpc:125, gpe:3}], [/cloves/i, {gpc:100}], [/paprika/i, {gpc:115}],
+  [/red pepper flakes/i, {gpc:90}], [/white pepper/i, {gpc:110, gpe:0.3}],
+  [/italian seasoning/i, {gpc:58}], [/thyme/i, {gpc:48}], [/yeast/i, {gpc:150}],
+  [/frank/i, {gpc:100}], [/cowboy butter/i, {gpc:120}], [/southwest/i, {gpc:120}], [/tuscan heat/i, {gpc:120}],
+  [/seasoning|spice blend/i, {gpc:120}],
+  [/gochujang/i, {gpc:290}], [/miso/i, {gpc:275}], [/doubanjiang/i, {gpc:285}], [/sesame paste/i, {gpc:250}],
+  [/oyster sauce/i, {gpc:290}], [/soy glaze/i, {gpc:300}], [/sake/i, {gpc:232}], [/passata/i, {gpc:245}],
+  [/dijon/i, {gpc:240}], [/sun-?dried/i, {gpc:100}], [/cotija/i, {gpc:135}], [/thai basil/i, {gpc:24}],
+  [/basil/i, {gpc:24}], [/dill/i, {gpc:20}], [/crispy fried onions/i, {gpc:40, gpe:170}],
+  [/diced tomatoes/i, {gpc:240}], [/chipotle peppers in adobo/i, {gpc:240, gpe:10}], [/chipotle chiles/i, {gpc:130}],
+  [/chicken stock concentrate/i, {gpe:5}], [/chicken stock cube/i, {gpc:150, gpe:7}],
+  [/chicken breast/i, {gpc:140, gpe:227}], [/chicken thigh/i, {gpc:140, gpe:113}], [/chicken tender/i, {gpc:140}],
+  [/rotisserie/i, {gpc:140, gpe:900}], [/ground pork/i, {gpc:225}], [/guanciale/i, {gpc:150}],
+  [/pork chop/i, {gpc:140}], [/sirloin/i, {gpc:140}], [/smoked sausage/i, {gpc:150}],
+  [/italian pork sausage|sausage/i, {gpc:150, gpe:113}], [/chuck roast/i, {gpc:140, gpe:454}],
+  [/pecorino/i, {gpc:100}], [/rigatoni/i, {gpc:90}], [/ramen noodles/i, {gpc:60, gpe:28}],
+  [/wide rice noodles/i, {gpc:70}], [/pita/i, {gpc:60}], [/bok choy/i, {gpc:70, gpe:100}],
+  [/olive oil/i, {gpe:14}], [/^salt\b/i, {gpc:288, gpe:0.4}],
+  [/flour tortilla/i, {gpc:100, gpe:45}], [/corn tortilla/i, {gpc:100, gpe:26}], [/baby corn/i, {gpc:140}],
+  [/bell pepper/i, {gpc:149, gpe:120}], [/carrot/i, {gpc:128, gpe:61}], [/cucumber/i, {gpc:104, gpe:301}],
+  [/^eggs?$/i, {gpc:243, gpe:50}], [/poblano/i, {gpc:120, gpe:100}], [/onion/i, {gpc:160, gpe:150}],
+  [/zucchini/i, {gpc:113, gpe:196}], [/^(small |medium |large )?limes?$/i, {gpc:242, gpe:67}], [/roma/i, {gpc:180, gpe:62}],
+  [/scallion/i, {gpc:100, gpe:15}], [/shallot/i, {gpc:160, gpe:44}], [/sweet potato/i, {gpc:133, gpe:180}],
+  [/bacon/i, {gpc:70, gpe:12}], [/thai red chili/i, {gpc:100, gpe:10}], [/^(small |medium |large )?lemons?$/i, {gpc:244, gpe:58}],
+  [/^garlic$/i, {gpc:136, gpe:40}]
+];
+// Ingredients saved as "each" but with calories/package/custom units still in per-GRAM terms.
+const PER_GRAM_EACH_FIXES = { eggs:50, scallions:15, cucumber:301 };
+async function fixDensityGapsIfNeeded(){
+  try{
+    const snap = await getDocs(sharedCol(SHARED_INGREDIENTS_COLLECTION));
+    const writes = [];
+    let fixed = 0;
+    snap.forEach(d => {
+      const ing = d.data();
+      const name = (ing.name||'').trim();
+      const patch = {};
+      const filled = [];
+      const key = name.toLowerCase();
+
+      // 1) repair per-gram "each" data (only while calories still look per-gram)
+      const gramsEach = PER_GRAM_EACH_FIXES[key];
+      if (gramsEach && ing.unit === 'each' && Number(ing.calories) > 0 && Number(ing.calories) < 2 && !(Number(ing.gramsPerEach) > 0)){
+        patch.calories = Math.round(Number(ing.calories) * gramsEach * 100) / 100;
+        patch.gramsPerEach = gramsEach;
+        const customs = (ing.customUnits||[]).filter(c => c.name !== 'each').map(c => {
+          const out = { ...c };
+          if ((c.direction||'smaller') === 'larger') out.factor = Math.round((Number(c.factor)||0) / gramsEach * 1000) / 1000;
+          if (c.name === 'dozen') out.factor = 12;
+          return out;
+        });
+        patch.customUnits = customs;
+        if (ing.prices){
+          const prices = {};
+          Object.entries(ing.prices).forEach(([store, p]) => {
+            const size = Number(p.packageSize)||0;
+            prices[store] = { ...p, packageSize: size > 0 ? Math.round(size / gramsEach * 1000) / 1000 : size, unit: p.unit || '' };
+          });
+          patch.prices = prices;
+        }
+        filled.push('perGramEachRepair');
+      }
+
+      // 2) garlic cloves: "clove" was defined as 1 per head
+      if (key === 'garlic' && (ing.customUnits||[]).some(c => c.name === 'clove' && Number(c.factor) === 1)){
+        patch.customUnits = (patch.customUnits || ing.customUnits).map(c => c.name === 'clove' ? { ...c, factor: 10, direction:'smaller' } : c);
+        filled.push('cloveFactor');
+      }
+
+      // 3) fill blank grams-per-cup / grams-per-each from the table
+      const hit = DENSITY_DEFAULTS.find(([re]) => re.test(name));
+      if (hit){
+        const def = hit[1];
+        if (def.gpc && !(Number(ing.gramsPerCup) > 0)){ patch.gramsPerCup = def.gpc; filled.push('gramsPerCup'); }
+        if (def.gpe && !(Number(patch.gramsPerEach ?? ing.gramsPerEach) > 0)){ patch.gramsPerEach = def.gpe; filled.push('gramsPerEach'); }
+      }
+      // plain water is legitimately zero-calorie
+      if (/^(hot |cold |warm )?water$/i.test(name) && ing.needsReview){ patch.needsReview = false; filled.push('waterReviewed'); }
+
+      if (!filled.length) return;
+      patch.autoFilled = Array.from(new Set([...(ing.autoFilled||[]), ...filled]));
+      writes.push(setDoc(doc(db, SHARED_INGREDIENTS_COLLECTION, d.id), patch, { merge: true }));
+      fixed++;
+    });
+    if (!writes.length) return;
+    await Promise.all(writes);
+    toast(`Auto-filled density/weight data on ${fixed} ingredient${fixed!==1?'s':''} — re-export the issue report to see what's left`);
+  } catch(err){
+    console.error('Density backfill failed:', err);
   }
 }
 
@@ -2733,11 +2839,11 @@ function buildIngredientIssueReport(){
   };
 
   Object.entries(ings).forEach(([id, ing]) => {
-    if (!(Number(ing.calories) > 0)) add(id, { type:'missing_calories', detail:'Calories not set' });
+    if (!(Number(ing.calories) > 0) && !/^(hot |cold |warm )?water$/i.test(ing.name||'')) add(id, { type:'missing_calories', detail:'Calories not set' });
     if (!(Number(ing.gramsPerCup) > 0)) add(id, { type:'missing_grams_per_cup', detail:'gramsPerCup is 0/blank, so cup/tbsp/tsp <-> weight conversions fail' });
     if (['g','kg','ml','l'].includes(ing.unit)) add(id, { type:'metric_reference_unit', detail:`Tracked in "${ing.unit}" — expected an American unit (oz, lb, cup, fl oz, tbsp, tsp, each)` });
     if (ing.unit === 'each' && !(Number(ing.gramsPerEach) > 0)) add(id, { type:'each_without_weight', detail:'Counted as "each" but gramsPerEach is not set, so recipes using weight/volume cannot convert' });
-    if (!ing.category) add(id, { type:'no_saved_aisle', detail:`No saved grocery aisle (guessing "${inferGroceryCategory(ing)}")` });
+    if (!ing.category && inferGroceryCategory(ing) === 'Other') add(id, { type:'no_saved_aisle', detail:`No saved grocery aisle (guessing "${inferGroceryCategory(ing)}")` });
     const noPrice = STORES.filter(s => !(ing.prices && ing.prices[s] && Number(ing.prices[s].price) > 0));
     if (noPrice.length) add(id, { type:'missing_prices', detail:`No price at: ${noPrice.join(', ')}` });
   });
@@ -3848,7 +3954,8 @@ function ingredientCreatedAtMillis(ing){
 // red = the core data itself (calories) is missing, same signal as the "needs data"
 // warning — this is the more serious gap since price alone isn't very useful without it.
 function ingredientCompletenessStatus(ing){
-  const missingCore = !!ing.needsReview || !(Number(ing.calories) > 0);
+  const isPlainWater = /^(hot |cold |warm )?water$/i.test(ing.name||'');
+  const missingCore = isPlainWater ? false : (!!ing.needsReview || !(Number(ing.calories) > 0));
   if (missingCore){
     return { level:'red', glyph:'✕', label:'Missing core data — calories haven\'t been set' };
   }
