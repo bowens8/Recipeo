@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="RecipeMe" />
 <meta name="theme-color" content="#EEF1E6" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -183,6 +183,13 @@
       <div class="panel-head">
         <h2>Pantry</h2>
         <div class="panel-head-right">
+          <label class="sort-select-wrap">Show
+            <select id="pantry-filter-select">
+              <option value="all">Everything</option>
+              <option value="stocked">In stock</option>
+              <option value="empty">Not stocked</option>
+            </select>
+          </label>
           <label class="sort-select-wrap">Sort by
             <select id="pantry-sort-select">
               <option value="name-asc">Name (A–Z)</option>
@@ -192,7 +199,11 @@
           </label>
         </div>
       </div>
-      <p class="panel-sub" style="margin:-14px 0 14px;">What you already have on hand. Subtracted automatically from your shopping list.</p>
+      <p class="panel-sub" style="margin:-14px 0 10px;">What you already have on hand. Subtracted automatically from your shopping list.</p>
+      <div class="pantry-search-row">
+        <input type="search" id="pantry-search" placeholder="Search pantry… (Enter jumps to the amount)" autocomplete="off" />
+        <span id="pantry-summary" class="pantry-summary"></span>
+      </div>
       <div id="pantry-list" class="pantry-list"></div>
     </section>
 
@@ -214,6 +225,7 @@
           </label>
           <button id="bulk-add-btn" class="btn btn-ghost">⚡ Quick add multiple</button>
           <button id="import-ingredient-btn" class="btn btn-ghost">📄 Import detailed data</button>
+          <button id="export-issues-btn" class="btn btn-ghost">🩺 Export issue report</button>
           <button id="autofill-photos-btn" class="btn btn-ghost">🖼️ Auto-fill missing photos</button>
           <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
         </div>
@@ -780,6 +792,30 @@ package_size_g: 2268"></textarea>
     </div>
   </div>
 
+  <div id="shop-review-modal" class="modal modal-wide hidden">
+    <div class="modal-head">
+      <h3>Review what you bought</h3>
+      <button class="icon-btn modal-close" data-close="shop-review-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-top:0;">Change anything that didn't match the plan — a different package size, a different unit, less than you needed. Anything still short stays on your shopping list.</p>
+      <div id="shop-review-rows" class="shop-review-rows"></div>
+      <div class="shop-review-extra">
+        <strong>Bought something else?</strong>
+        <div class="ing-combo" id="shop-extra-combo">
+          <input type="text" class="ing-combo-search" placeholder="Search to add an item that wasn't on the list…" autocomplete="off" />
+          <input type="hidden" id="shop-extra-ingredient" />
+          <div class="ing-combo-list hidden"></div>
+        </div>
+      </div>
+      <p id="shop-review-footer" class="hint"></p>
+      <div class="modal-actions">
+        <button type="button" id="shop-review-cancel" class="btn btn-ghost">Back</button>
+        <button type="button" id="shop-review-confirm" class="btn btn-primary">Add to pantry</button>
+      </div>
+    </div>
+  </div>
+
   <div id="meal-modal" class="modal hidden">
     <div class="modal-head">
       <h3 id="meal-modal-title">Add meal</h3>
@@ -799,6 +835,7 @@ package_size_g: 2268"></textarea>
         <button class="toggle-btn active" data-mealtype="cook" id="toggle-cook">Cook something</button>
         <button class="toggle-btn" data-mealtype="leftover" id="toggle-leftover">Eat leftovers</button>
         <button class="toggle-btn" data-mealtype="quick" id="toggle-quick">Quick item</button>
+        <button class="toggle-btn" data-mealtype="note" id="toggle-note">Note</button>
       </div>
 
       <div id="meal-cook-fields">
@@ -842,6 +879,13 @@ package_size_g: 2268"></textarea>
             <select id="meal-quick-unit"></select>
           </label>
         </div>
+      </div>
+
+      <div id="meal-note-fields" class="hidden">
+        <p class="hint" style="margin-top:0;">Just a label for planning — eating out, dinner at Mom's, skipping lunch. It doesn't touch ingredients, calories, or your shopping list.</p>
+        <label>What's the plan?
+          <input type="text" id="meal-note-text" maxlength="80" placeholder="Eating out, dinner at Mom's…" autocomplete="off" />
+        </label>
       </div>
 
       <div class="modal-actions">
