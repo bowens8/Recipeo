@@ -644,7 +644,13 @@ input[type="file"]{
 
 @media (max-width:820px){
   .week-grid{grid-template-columns:1fr; }
-  .topbar{flex-wrap:wrap; gap:10px; padding:12px 16px; position:relative;}
+  .topbar{
+    flex-wrap:wrap; gap:10px; position:sticky; top:0;
+    padding:12px 16px;
+    padding-top:calc(12px + env(safe-area-inset-top, 0px));
+    padding-left:calc(16px + env(safe-area-inset-left, 0px));
+    padding-right:calc(16px + env(safe-area-inset-right, 0px));
+  }
 
   /* Compact dropdown instead of a tab row that wraps into multiple stacked rows —
      shows only the current tab, expands into a short list on tap. */
