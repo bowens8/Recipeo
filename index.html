@@ -1,947 +1,728 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="RecipeMe" />
-<meta name="theme-color" content="#EEF1E6" />
-<link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
-<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
-<link rel="manifest" href="manifest.json" />
-<title>RecipeMe — weekly meal planning</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Public+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-</head>
-<body>
-
-<!-- ===================== LOADING SCREEN ===================== -->
-<!-- Shown while Firebase determines whether there's already a signed-in session —
-     avoids ever flashing the auth screen for someone who's already logged in. -->
-<div id="loading-screen" class="loading-screen">
-  <span class="loading-brand-mark">🥕</span>
-</div>
-
-<!-- ===================== AUTH SCREEN ===================== -->
-<div id="auth-screen" class="auth-screen hidden">
-  <div class="auth-card">
-    <div class="auth-brand">
-      <span class="auth-brand-mark">🥕</span>
-      <h1>RecipeMe</h1>
-      <p class="auth-tagline">Plan the week. Shop once. Waste less.</p>
-    </div>
-    <form id="auth-form">
-      <label>Email
-        <input type="email" id="auth-email" required autocomplete="email" />
-      </label>
-      <label>Password
-        <input type="password" id="auth-password" required autocomplete="current-password" minlength="6" />
-      </label>
-      <p id="auth-error" class="auth-error"></p>
-      <div class="auth-buttons">
-        <button type="submit" id="auth-signin-btn" class="btn btn-primary">Sign in</button>
-        <button type="button" id="auth-signup-btn" class="btn btn-ghost">Create account</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ===================== APP SHELL ===================== -->
-<div id="app-shell" class="app-shell hidden">
-
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">🥕</span>
-      <span class="brand-name">RecipeMe</span>
-    </div>
-    <button type="button" id="mobile-tab-toggle" class="mobile-tab-toggle" aria-expanded="false">
-      <span id="mobile-tab-toggle-label">Week Plan</span>
-      <span class="mobile-tab-chevron">▾</span>
-    </button>
-    <nav class="tabs" id="tabs">
-      <button class="tab-btn active" data-tab="plan">Week Plan</button>
-      <button class="tab-btn" data-tab="shopping">Shopping List</button>
-      <button class="tab-btn" data-tab="recipes">Recipes</button>
-      <button class="tab-btn" data-tab="baking">Baking</button>
-      <button class="tab-btn" data-tab="pantry">Pantry</button>
-      <button class="tab-btn" data-tab="ingredients">Ingredients</button>
-      <button class="tab-btn" data-tab="spices">Spices</button>
-    </nav>
-    <button id="signout-btn" class="signout-btn" title="Sign out">⎋</button>
-  </header>
-
-  <main class="content">
-
-    <!-- ---------- WEEK PLAN TAB ---------- -->
-    <section id="tab-plan" class="tab-panel active">
-      <div class="panel-head">
-        <div class="week-nav">
-          <button id="week-prev" class="icon-btn">←</button>
-          <h2 id="week-label">This Week</h2>
-          <button id="week-next" class="icon-btn">→</button>
-        </div>
-        <label class="sort-select-wrap">Show
-          <select id="plan-days-select">
-            <option value="7">7 days</option>
-            <option value="10">10 days</option>
-            <option value="14">14 days</option>
-          </select>
-        </label>
-        <div class="week-calories" id="week-calories"></div>
-      </div>
-      <div id="week-grid" class="week-grid"></div>
-    </section>
-
-    <!-- ---------- SHOPPING LIST TAB ---------- -->
-    <section id="tab-shopping" class="tab-panel">
-      <div class="panel-head">
-        <h2>Shopping List</h2>
-        <div class="panel-head-right">
-          <label class="sort-select-wrap">Shopping for
-            <select id="shopping-range-select">
-              <option value="1">This week</option>
-              <option value="2">Next 2 weeks</option>
-              <option value="3">Next 3 weeks</option>
-              <option value="4">Next 4 weeks</option>
-              <option value="all">Every planned meal</option>
-            </select>
-          </label>
-          <label class="sort-select-wrap">Sort by
-            <select id="shopping-sort-select">
-              <option value="default">Recommended</option>
-              <option value="alpha">Alphabetical</option>
-              <option value="aisle">Grocery aisle</option>
-            </select>
-          </label>
-          <button id="shopping-mode-btn" class="btn btn-ghost">Start Shopping</button>
-        </div>
-      </div>
-      <p class="panel-sub" id="shopping-range-sub" style="margin:-14px 0 14px;">For the week shown in Week Plan — pantry items already subtracted.</p>
-      <div class="store-picker">
-        <span class="store-picker-label">Shop from:</span>
-        <div id="store-checks" class="store-checks"></div>
-      </div>
-      <div id="shopping-total" class="shopping-total"></div>
-      <div id="shopping-list" class="shopping-list"></div>
-      <div id="shopping-mode-bar" class="shopping-mode-bar hidden">
-        <span id="shopping-mode-count">0 items checked</span>
-        <button id="finish-shopping-btn" class="btn btn-primary">Add checked items to pantry &amp; finish</button>
-      </div>
-    </section>
-
-    <!-- ---------- RECIPES TAB ---------- -->
-    <section id="tab-recipes" class="tab-panel">
-      <div class="panel-head">
-        <h2>Recipes</h2>
-        <div class="panel-head-right">
-          <label class="sort-select-wrap">Sort by
-            <select id="recipe-sort-select">
-              <option value="name-asc">Name (A–Z)</option>
-              <option value="favorites">Favorites first</option>
-              <option value="calories-asc">Calories (low–high)</option>
-              <option value="fewest-missing">Fewest missing from pantry</option>
-            </select>
-          </label>
-          <button id="import-recipe-btn" class="btn btn-ghost">📄 Import from text</button>
-          <button id="new-recipe-btn" class="btn btn-primary">+ New recipe</button>
-        </div>
-      </div>
-      <div id="recipe-list" class="card-grid"></div>
-    </section>
-
-    <!-- ---------- BAKING TAB ---------- -->
-    <section id="tab-baking" class="tab-panel">
-      <div class="panel-head">
-        <h2>Baking</h2>
-        <div class="panel-head-right">
-          <label class="sort-select-wrap">Sort by
-            <select id="baking-sort-select">
-              <option value="name-asc">Name (A–Z)</option>
-              <option value="favorites">Favorites first</option>
-              <option value="calories-asc">Calories (low–high)</option>
-              <option value="fewest-missing">Fewest missing from pantry</option>
-            </select>
-          </label>
-          <button id="import-baking-btn" class="btn btn-ghost">📄 Import from text</button>
-          <button id="new-baking-btn" class="btn btn-primary">+ New baking recipe</button>
-        </div>
-      </div>
-      <p class="panel-sub" style="margin:-14px 0 14px;">Same recipes, same ingredient library, same everything —
-        just kept separate from your regular recipes.</p>
-      <div id="baking-list" class="card-grid"></div>
-    </section>
-
-    <!-- ---------- PANTRY TAB ---------- -->
-    <section id="tab-pantry" class="tab-panel">
-      <div class="panel-head">
-        <h2>Pantry</h2>
-        <div class="panel-head-right">
-          <label class="sort-select-wrap">Show
-            <select id="pantry-filter-select">
-              <option value="all">Everything</option>
-              <option value="stocked">In stock</option>
-              <option value="empty">Not stocked</option>
-            </select>
-          </label>
-          <label class="sort-select-wrap">Sort by
-            <select id="pantry-sort-select">
-              <option value="name-asc">Name (A–Z)</option>
-              <option value="aisle">Grocery aisle</option>
-              <option value="stocked-first">Stocked first</option>
-            </select>
-          </label>
-        </div>
-      </div>
-      <p class="panel-sub" style="margin:-14px 0 10px;">What you already have on hand. Subtracted automatically from your shopping list.</p>
-      <div class="pantry-search-row">
-        <input type="search" id="pantry-search" placeholder="Search pantry… (Enter jumps to the amount)" autocomplete="off" />
-        <span id="pantry-summary" class="pantry-summary"></span>
-      </div>
-      <div id="pantry-list" class="pantry-list"></div>
-    </section>
-
-    <!-- ---------- INGREDIENTS TAB ---------- -->
-    <section id="tab-ingredients" class="tab-panel">
-      <div class="panel-head">
-        <h2>Ingredient Library</h2>
-        <div class="panel-head-right">
-          <label class="sort-select-wrap">Sort by
-            <select id="ingredient-sort-select">
-              <option value="name-asc">Name (A–Z)</option>
-              <option value="name-desc">Name (Z–A)</option>
-              <option value="newest">Recently added</option>
-              <option value="oldest">Oldest added</option>
-              <option value="calories-desc">Calories (high–low)</option>
-              <option value="calories-asc">Calories (low–high)</option>
-              <option value="aisle">Grocery aisle</option>
-            </select>
-          </label>
-          <button id="bulk-add-btn" class="btn btn-ghost">⚡ Quick add multiple</button>
-          <button id="import-ingredient-btn" class="btn btn-ghost">📄 Import detailed data</button>
-          <button id="export-issues-btn" class="btn btn-ghost">🩺 Export issue report</button>
-          <button id="autofill-photos-btn" class="btn btn-ghost">🖼️ Auto-fill missing photos</button>
-          <button id="new-ingredient-btn" class="btn btn-primary">+ New ingredient</button>
-        </div>
-      </div>
-      <div id="ingredient-list" class="ingredient-table"></div>
-    </section>
-
-    <!-- ---------- SPICES TAB ---------- -->
-    <section id="tab-spices" class="tab-panel">
-      <div class="panel-head">
-        <h2>Spices</h2>
-        <div class="panel-head-right">
-          <button id="new-spice-btn" class="btn btn-ghost">+ Add base spice</button>
-          <button id="new-blend-btn" class="btn btn-primary">+ New spice blend</button>
-        </div>
-      </div>
-
-      <h3 class="spice-section-title">Base spices</h3>
-      <p class="panel-sub" style="margin-bottom:14px;">What you already have on hand vs. what you need to pick up — just a
-        simple toggle, no need to track exact amounts for spices.</p>
-      <div id="base-spice-list" class="base-spice-list"></div>
-
-      <h3 class="spice-section-title" style="margin-top:32px;">Spice blends</h3>
-      <p class="panel-sub" style="margin-bottom:14px;">Mixes of your base spices — reference a blend directly in any
-        recipe, and it'll show exactly how much of each spice to combine.</p>
-      <div id="spice-blend-list" class="card-grid"></div>
-    </section>
-
-  </main>
-</div>
-
-<!-- ===================== MODALS ===================== -->
-<div id="modal-backdrop" class="modal-backdrop hidden">
-
-  <!-- Recipe editor -->
-  <div id="recipe-modal" class="modal modal-wide hidden">
-    <div class="modal-head">
-      <h3 id="recipe-modal-title">New recipe</h3>
-      <button class="icon-btn modal-close" data-close="recipe-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <label>Cover photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span>
-        <input type="file" id="recipe-cover-input" accept="image/*" />
-      </label>
-      <div id="recipe-cover-preview" class="photo-preview cover-preview hidden">
-        <img id="recipe-cover-img" alt="Recipe cover" />
-        <button type="button" id="recipe-cover-remove" class="btn btn-ghost btn-small">Remove cover</button>
-      </div>
-
-      <label>Recipe name
-        <input type="text" id="recipe-name" placeholder="e.g. Weeknight Chicken Tacos" />
-      </label>
-      <label class="label-inline">Base servings
-        <input type="number" id="recipe-servings" min="1" value="4" style="width:80px" />
-      </label>
-      <label class="checkbox-inline">
-        <input type="checkbox" id="recipe-is-baking" />
-        This is a baking recipe — show it on the Baking tab instead of Recipes
-      </label>
-
-      <h4>Ingredients</h4>
-      <div id="recipe-ingredients" class="recipe-ingredients"></div>
-      <button id="add-recipe-ingredient" class="btn btn-ghost btn-small">+ Add ingredient</button>
-
-      <h4>Steps <span style="font-weight:400;font-size:.78rem;color:var(--ink-soft)">(each can have its own photo)</span></h4>
-      <div id="recipe-steps" class="recipe-steps"></div>
-      <button id="add-recipe-step" class="btn btn-ghost btn-small">+ Add step</button>
-
-      <div class="modal-actions">
-        <button id="delete-recipe-btn" class="btn btn-danger hidden">Delete recipe</button>
-        <button id="save-recipe-btn" class="btn btn-primary">Save recipe</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Ingredient editor -->
-  <div id="ingredient-modal" class="modal hidden">
-    <div class="modal-head">
-      <h3 id="ingredient-modal-title">New ingredient</h3>
-      <button class="icon-btn modal-close" data-close="ingredient-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <label class="label-inline">Emoji
-        <input type="text" id="ingredient-emoji" maxlength="4" placeholder="🥕" style="width:60px;text-align:center;font-size:1.4rem" />
-      </label>
-      <label>Or upload a photo <span style="font-weight:400;color:var(--ink-soft)">(used instead of the emoji if set)</span>
-        <input type="file" id="ingredient-photo-input" accept="image/*" />
-      </label>
-      <div id="ingredient-photo-preview" class="photo-preview hidden">
-        <img id="ingredient-photo-img" alt="Ingredient photo" />
-        <button type="button" id="ingredient-photo-remove" class="btn btn-ghost btn-small">Remove photo</button>
-      </div>
-      <label>Name
-        <input type="text" id="ingredient-name" placeholder="e.g. Carrot" autocomplete="off" />
-      </label>
-      <div id="ingredient-autofill-suggestion" class="autofill-suggestion hidden">
-        <span id="ingredient-autofill-text"></span>
-        <button type="button" id="ingredient-autofill-apply" class="btn btn-ghost btn-small">Use these</button>
-        <button type="button" id="ingredient-autofill-dismiss" class="icon-btn" aria-label="Dismiss">✕</button>
-      </div>
-      <label class="checkbox-inline">
-        <input type="checkbox" id="ingredient-is-spice" />
-        This is a spice — show it on the Spices tab
-      </label>
-      <label>Grocery aisle <span style="font-weight:400;color:var(--ink-soft)">(for grouping the shopping list — leave on Auto unless it's guessing wrong)</span>
-        <select id="ingredient-category">
-          <option value="">Auto-detect</option>
-          <option value="Produce">Produce</option>
-          <option value="Meat & Seafood">Meat & Seafood</option>
-          <option value="Dairy & Eggs">Dairy & Eggs</option>
-          <option value="Bakery">Bakery</option>
-          <option value="Frozen">Frozen</option>
-          <option value="Pantry & Dry Goods">Pantry & Dry Goods</option>
-          <option value="Canned Goods">Canned Goods</option>
-          <option value="Condiments & Sauces">Condiments & Sauces</option>
-          <option value="Spices & Seasonings">Spices & Seasonings</option>
-          <option value="Beverages">Beverages</option>
-          <option value="Other">Other</option>
-        </select>
-      </label>
-      <div class="field-row">
-        <label>Unit
-          <select id="ingredient-unit">
-            <option value="g">grams (g)</option>
-            <option value="kg">kilograms (kg)</option>
-            <option value="ml">milliliters (ml)</option>
-            <option value="l">liters (l)</option>
-            <option value="cup">cup</option>
-            <option value="tbsp">tbsp</option>
-            <option value="tsp">tsp</option>
-            <option value="floz">fluid ounces (fl oz)</option>
-            <option value="each">each / whole</option>
-            <option value="oz">ounces, weight (oz)</option>
-            <option value="lb">lb</option>
-            <option value="__custom__">Custom unit…</option>
-          </select>
-        </label>
-        <label>Calories per unit
-          <input type="number" id="ingredient-calories" min="0" step="1" placeholder="e.g. 41 per 100g → enter per-unit value" />
-        </label>
-      </div>
-      <div id="ingredient-custom-unit-wrap" class="hidden">
-        <label>Custom unit name
-          <input type="text" id="ingredient-custom-unit-name" placeholder="e.g. bulb" />
-        </label>
-      </div>
-      <p class="hint">Enter calories for exactly one unit as selected above (e.g. calories per 1 gram, or per 1 each). The unit is just a reference for calories — on the shopping list, amounts are automatically totaled and shown in whichever size (g/kg, tsp/tbsp/cup/L, etc.) makes the most sense, so you never need to do the math yourself.</p>
-
-      <h4>Custom units <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional)</span></h4>
-      <p class="hint" style="margin-top:-4px;">Add other units recipes might use for this ingredient — smaller ones (10 cloves = 1 bulb)
-        or larger ones (1 bulb = 10 cloves), whichever direction makes sense. Recipes can then use any of these units
-        directly, and the shopping list converts and combines everything automatically. Any unit marked "larger"
-        also becomes selectable as the pricing unit below (e.g. price per bulb instead of per clove).</p>
-      <div id="ingredient-custom-units" class="custom-units-list"></div>
-      <button type="button" id="add-custom-unit-btn" class="btn btn-ghost btn-small">+ Add custom unit</button>
-
-      <label>Grams per cup <span style="font-weight:400;color:var(--ink-soft)">(optional — only needed for a specific case, see below)</span>
-        <input type="number" id="ingredient-density" min="0" step="0.1" placeholder="e.g. 240 for honey, 120 for flour" />
-      </label>
-      <p class="hint">Leave this blank for almost everything. It only matters if you sometimes measure THIS
-        ingredient by volume (cup/tbsp/tsp) and other times by weight (g/kg/oz/lb) — e.g. one recipe says
-        "2 tbsp honey", another says "50 g honey". Filling this in lets those combine correctly on the
-        shopping list. A quick web search for "[ingredient] grams per cup" will give you a good number.</p>
-
-      <label>Grams per each <span style="font-weight:400;color:var(--ink-soft)">(optional — see below)</span>
-        <input type="number" id="ingredient-grams-per-each" min="0" step="0.1" placeholder="e.g. 150 for a medium onion" />
-      </label>
-      <p class="hint">Only matters if this ingredient's unit is "each" (bought as whole items — an onion, a
-        bell pepper, an egg) but a recipe sometimes calls for it by weight or volume instead — e.g. "1 onion"
-        in one recipe, "150 g onion" or "1 cup diced onion" in another. Fill in roughly how much one "each"
-        weighs, and — if you also want volume amounts like cups to work — set Grams per cup above too, since
-        weight is the bridge between the two.</p>
-
-      <h4>Pricing, by store <span style="font-weight:400;font-size:.8rem;color:var(--ink-soft)">(optional — add now or anytime later by reopening this ingredient)</span></h4>
-
-      <label class="checkbox-inline">
-        <input type="checkbox" id="ingredient-packaged" />
-        Sold in fixed-size packages (a bag, box, or block) — not bought as an exact amount
-      </label>
-      <p class="hint" style="margin-top:-6px;">Check this for things like a box of pasta or a block of cheese.
-        Leave it unchecked for things sold as exactly what you need, like deli meat sliced to order. When
-        checked, enter each store's package size below — the shopping list will round up to the number of
-        whole packages you'd actually need to buy, and any extra left over from rounding up gets automatically
-        added to your pantry once you check it off while shopping. If you've defined a "larger" custom unit
-        above (like bulb), each store also gets a unit dropdown so you can price and size packages in that
-        unit directly instead of converting by hand.</p>
-
-      <div id="ingredient-prices" class="ingredient-prices"></div>
-      <p class="hint">Leave a store blank if you don't know the price there — the shopping list will just skip it for that item.</p>
-
-      <div class="modal-actions">
-        <button id="delete-ingredient-btn" class="btn btn-danger hidden">Delete</button>
-        <button id="save-ingredient-btn" class="btn btn-primary">Save ingredient</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Spice blend editor -->
-  <div id="blend-modal" class="modal modal-wide hidden">
-    <div class="modal-head">
-      <h3 id="blend-modal-title">New spice blend</h3>
-      <button class="icon-btn modal-close" data-close="blend-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="field-row">
-        <label class="label-inline">Emoji
-          <input type="text" id="blend-emoji" maxlength="4" placeholder="🌶️" style="width:60px;text-align:center;font-size:1.4rem" />
-        </label>
-        <label style="flex:1">Blend name
-          <input type="text" id="blend-name" placeholder="e.g. Taco Seasoning" />
-        </label>
-      </div>
-      <label class="label-inline">Stored/used in
-        <select id="blend-unit" style="width:120px">
-          <option value="tsp">tsp</option>
-          <option value="tbsp">tbsp</option>
-          <option value="cup">cup</option>
-          <option value="g">g</option>
-          <option value="oz">oz</option>
-        </select>
-      </label>
-      <p class="hint">This is the unit recipes will use when calling for this blend — e.g. "2 tbsp Taco Seasoning".</p>
-
-      <h4>Made from</h4>
-      <div id="blend-components" class="recipe-ingredients"></div>
-      <button type="button" id="add-blend-component" class="btn btn-ghost btn-small">+ Add spice</button>
-
-      <p class="hint" id="blend-yield-note" style="margin-top:14px;"></p>
-
-      <div class="modal-actions">
-        <button id="delete-blend-btn" class="btn btn-danger hidden">Delete blend</button>
-        <button id="save-blend-btn" class="btn btn-primary">Save blend</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Bulk add ingredients -->
-  <div id="bulk-add-modal" class="modal hidden">
-    <div class="modal-head">
-      <h3>Quick add multiple ingredients</h3>
-      <button class="icon-btn modal-close" data-close="bulk-add-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <label>Paste ingredient names — one per line, or comma-separated
-        <textarea id="bulk-add-textarea" rows="8" placeholder="chicken breast
-garlic
-olive oil
-salt
-cheddar cheese"></textarea>
-      </label>
-      <p class="hint">Names that match something in RecipeMe's built-in list (common pantry staples, produce,
-        proteins, spices, etc.) get their emoji, unit, and calories filled in automatically. Anything else
-        still gets created — just with a blank emoji and 0 calories for you to fill in later. Names that
-        already exist in your library are skipped.</p>
-      <div class="modal-actions">
-        <span></span>
-        <button type="button" id="bulk-add-confirm-btn" class="btn btn-primary">Add ingredients</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Import recipe from text -->
-  <div id="import-recipe-modal" class="modal modal-wide hidden">
-    <div class="modal-head">
-      <h3>Import recipe from text</h3>
-      <button class="icon-btn modal-close" data-close="import-recipe-modal">✕</button>
-    </div>
-    <div class="modal-body">
-
-      <div id="import-paste-step">
-        <details class="import-prompt-details">
-          <summary>📋 Don't have the text yet? Get a ready-to-use prompt for Claude</summary>
-          <p class="hint">Copy this, paste it into a new message to Claude along with a recipe URL, then paste
-            whatever Claude sends back into the box below. It also researches full nutrition, pricing, and
-            grocery-aisle data for the recipe's ingredients — any new ones get created with that data filled
-            in automatically instead of blank.</p>
-          <textarea readonly rows="9" class="import-prompt-text" id="import-recipe-prompt-text">Fetch this recipe page and convert it into this EXACT plain-text format for a
-recipe importer. Output ONLY the formatted text — no commentary before or after,
-no markdown code fences.
-
-Format rules:
-- Section headers (TITLE, SERVINGS, INGREDIENTS, PANTRY ITEMS, INSTRUCTIONS) each go
-  on their own independent line, in that order, spelled exactly as shown here — no
-  colon, no punctuation, nothing else on that line. The content for that section
-  starts on the line(s) immediately below the header, never on the same line as it.
-  For example:
-    TITLE
-    Buffalo-Spiced Crispy Chicken Cutlets
-    SERVINGS
-    2
-  NOT "TITLE: Buffalo-Spiced..." or "TITLE:" with the name on the same line.
-- PANTRY ITEMS is for basic staples (salt, pepper, oil, butter, etc.) — split
-  them out from INGREDIENTS if the source distinguishes "pantry staples" from
-  the shopping list; otherwise just put everything under INGREDIENTS and omit
-  the PANTRY ITEMS section entirely.
-- Every ingredient line starts with "- " followed by a quantity, a unit, then
-  the name — e.g. "- 8 oz broccoli florets" or "- 1/4 cup panko breadcrumbs".
-  Fractions and decimals are both fine. If something has no natural unit, just
-  give a count, e.g. "- 2 scallions". If a source ingredient has no amount at
-  all (e.g. "salt, to taste"), just write the name with no number, e.g. "- Salt".
-- Strip the name down to just the ingredient itself — no preparation, state, or
-  usage notes attached. Cut off anything like: chopped/diced/minced/sliced/grated/
-  shredded/crushed/cubed, cooled/room temperature/softened/melted/chilled/thawed,
-  "cut into ___ pieces"/halved/quartered, divided, "to taste"/"for garnish"/"for
-  serving"/"as needed", optional, or brand call-outs. Capitalize the result like a
-  normal name. For example: "black coffee, cooled" → "Black Coffee". "onion, finely
-  chopped" → "Onion". "unsalted butter, softened" → "Unsalted Butter". "2 boneless
-  skinless chicken breasts, cut into 1-inch cubes" → keep the "2" and unit as given,
-  but the name becomes "Chicken Breast". Only the qty/unit stay as given — clean
-  the name part specifically. This matters: a name like "black coffee, cooled"
-  won't match anything in an ingredient library or get useful nutrition/pricing
-  data, but "Black Coffee" will.
-- Use American units: tsp, tbsp, cup, fl oz, oz, lb — even if the source recipe
-  gives amounts in metric (grams, kilograms, milliliters, liters), convert them
-  (e.g. a source giving "200 g flour" should become roughly "1 1/2 cups flour" or
-  "7 oz flour", whichever reads more naturally for that ingredient — flour/sugar/
-  produce-by-weight usually read better in cups or oz, liquids in cups/fl oz,
-  small amounts like spices in tsp/tbsp). Only fall back to g/kg/ml/l if there's
-  truly no sensible American equivalent.
-- INSTRUCTIONS are numbered "1.", "2.", etc., one step per line, in the source's
-  original wording (condense only if a step is unreasonably long).
-- SERVINGS is a single number. If the source gives a range (e.g. "4-6"), pick
-  the lower number.
-
-After the INSTRUCTIONS section, research and append a full data block for EVERY
-distinct ingredient used above (skip only truly bare pantry staples like plain salt,
-pepper, or water) — this lets the importer create each one with real nutrition,
-pricing, and grocery-aisle data instead of a blank placeholder. Leave one blank line
-before each block. Use this exact format per ingredient (same header rule as above —
-each header word is its own bare line, no colon):
-
-INGREDIENT
-name: [the cleaned ingredient name — must exactly match what you wrote in the ingredient list above, not the raw recipe wording]
-grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
-UNIT_INFORMATION
-standard_unit: [a natural AMERICAN serving/measure unit, e.g. cup_cooked, slice, tbsp, whole item — never a metric-style serving like "100g"]
-standard_unit_weight_g: [grams that one standard_unit weighs]
-calories_per_standard_unit: [calories in one standard_unit]
-DENSITY_CONVERSION
-[zero or more lines like "grams_per_cup_dry: 185" — only if this ingredient is
- measured by volume in more than one state, or is naturally counted (an onion, an
- egg) but might be needed by weight/volume elsewhere, in which case add
- "grams_per_each: [grams one whole item weighs]". Omit this section otherwise.]
-PACKAGE_INFORMATION
-common_package_unit: [e.g. bag, box, jar, dozen]
-units_per_package: [usually 1, unless a package = e.g. "12" if sold by the dozen]
-package_weight_g: [total grams in one typical package]
-PRICE_INFORMATION
-ALDI
-package_price: [your best current estimate in USD]
-package_size_g: [grams in the package this price is for]
-KROGER
-package_price: [...]
-package_size_g: [...]
-GIANT_EAGLE
-package_price: [...]
-package_size_g: [...]
-
-If you can't find a real price at one of the three stores, give your best estimate
-based on similar products — don't skip the store, just estimate.
-
-Recipe URL: [paste your recipe URL here]</textarea>
-          <button type="button" class="btn btn-ghost btn-small" id="copy-recipe-prompt-btn">📋 Copy prompt</button>
-        </details>
-
-        <label>Upload a .txt file
-          <input type="file" id="import-file-input" accept=".txt,text/plain" />
-        </label>
-        <p class="hint" style="margin-top:-6px;">Or paste the text directly below.</p>
-        <label>Recipe text
-          <textarea id="import-textarea" rows="14" style="font-family:var(--font-mono); font-size:.82rem;" placeholder="TITLE
-My Recipe Name
-SERVINGS
-4
-INGREDIENTS
-- 1 cup flour
-- 2 eggs
-PANTRY ITEMS
-- Salt
-- Pepper
-INSTRUCTIONS
-1. Do the first thing.
-2. Do the next thing."></textarea>
-        </label>
-        <p class="hint">Expects the format: <code>TITLE</code>, <code>SERVINGS</code>, <code>INGREDIENTS</code>,
-          <code>PANTRY ITEMS</code> (optional), and <code>INSTRUCTIONS</code> as section headers, each on their
-          own line — ingredient lines starting with "- ", steps numbered "1.", "2." etc.</p>
-        <div class="modal-actions">
-          <span></span>
-          <button type="button" id="import-preview-btn" class="btn btn-primary">Preview import</button>
-        </div>
-      </div>
-
-      <div id="import-preview-step" class="hidden">
-        <h4 id="import-preview-title" style="margin-top:0;"></h4>
-        <p class="hint" id="import-preview-meta"></p>
-
-        <label>Cover photo <span style="font-weight:400;color:var(--ink-soft)">(optional)</span>
-          <input type="file" id="import-recipe-cover-input" accept="image/*" />
-        </label>
-        <div id="import-recipe-cover-preview" class="photo-preview cover-preview hidden">
-          <img id="import-recipe-cover-img" alt="Recipe cover" />
-          <button type="button" id="import-recipe-cover-remove" class="btn btn-ghost btn-small">Remove photo</button>
-        </div>
-
-        <h4>Ingredients</h4>
-        <div id="import-preview-ingredients" class="cook-ingredient-list"></div>
-        <h4>Steps</h4>
-        <p class="hint" id="import-preview-steps-count"></p>
-        <div class="modal-actions">
-          <button type="button" id="import-back-btn" class="btn btn-ghost">Back</button>
-          <button type="button" id="import-confirm-btn" class="btn btn-primary">Import recipe</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- Import detailed ingredient data from text -->
-  <div id="import-ingredient-modal" class="modal modal-wide hidden">
-    <div class="modal-head">
-      <h3>Import ingredient data</h3>
-      <button class="icon-btn modal-close" data-close="import-ingredient-modal">✕</button>
-    </div>
-    <div class="modal-body">
-
-      <div id="import-ing-paste-step">
-        <details class="import-prompt-details">
-          <summary>📋 Don't have the data yet? Get a ready-to-use prompt for Claude</summary>
-          <p class="hint">Prices are Claude's best current estimate, not a live lookup — worth a sanity check
-            before a big shopping trip. Copy this, paste it into a new message to Claude with an ingredient
-            name (and a product URL if you have one), then paste whatever it sends back below.</p>
-          <textarea readonly rows="9" class="import-prompt-text" id="import-ing-prompt-text">I need data on one grocery ingredient formatted as an exact text block for an
-importer. Research it (web search + fetch the URL if I gave you one) and output
-ONLY the formatted text below — no commentary, no markdown code fences.
-
-Format rules:
-Every header line — INGREDIENT, UNIT_INFORMATION, DENSITY_CONVERSION,
-PACKAGE_INFORMATION, PRICE_INFORMATION, and each store name (ALDI, KROGER,
-GIANT_EAGLE) — is its own independent line with NOTHING else on it: no colon,
-no value, no punctuation. The data that belongs to a header always starts on
-the line(s) immediately below it, never on the same line as the header itself.
-Only the "key: value" lines (name, standard_unit, package_price, etc.) use a
-colon — headers never do. Example of correct layout:
-  INGREDIENT
-  name: Jasmine Rice
-  UNIT_INFORMATION
-  standard_unit: cup_cooked
-NOT "INGREDIENT: Jasmine Rice" or "UNIT_INFORMATION: standard_unit: ...".
-
-INGREDIENT
-name: [the ingredient's common name]
-grocery_aisle: [one of: Produce, Meat & Seafood, Dairy & Eggs, Bakery, Frozen, Pantry & Dry Goods, Canned Goods, Condiments & Sauces, Spices & Seasonings, Beverages, Other]
-UNIT_INFORMATION
-standard_unit: [a natural AMERICAN serving/measure unit, e.g. cup_cooked, slice, tbsp, whole item — never a metric-style serving like "100g"]
-standard_unit_weight_g: [grams that one standard_unit weighs]
-calories_per_standard_unit: [calories in one standard_unit]
-DENSITY_CONVERSION
-[zero or more lines like "grams_per_cup_dry: 185" or "grams_per_tbsp: 14" —
- include this section only if the ingredient is commonly measured by volume in
- more than one state (dry vs. cooked, etc.); omit entirely otherwise.
- If this ingredient is naturally counted as whole items (an onion, an egg, a
- bell pepper) but recipes might also call for it by weight or volume, ALSO
- include "grams_per_each: [grams one whole item weighs]" — e.g. for a medium
- onion, "grams_per_each: 150".]
-PACKAGE_INFORMATION
-common_package_unit: [e.g. bag, box, jar, dozen]
-units_per_package: [usually 1, unless a package = e.g. "12" if sold by the dozen]
-package_weight_g: [total grams in one typical package]
-PRICE_INFORMATION
-ALDI
-package_price: [your best current estimate in USD]
-package_size_g: [grams in the package this price is for]
-KROGER
-package_price: [...]
-package_size_g: [...]
-GIANT_EAGLE
-package_price: [...]
-package_size_g: [...]
-
-If you can't find a real price at one of the three stores, give your best
-estimate based on similar products and say so in a line right after this block
-(clearly separate from the formatted text above, since that part needs to be
-pasted in as-is).
-
-Ingredient: [name here]
-Optional product page URL: [URL or leave blank]</textarea>
-          <button type="button" class="btn btn-ghost btn-small" id="copy-ing-prompt-btn">📋 Copy prompt</button>
-        </details>
-
-        <label>Upload a .txt file
-          <input type="file" id="import-ing-file-input" accept=".txt,text/plain" />
-        </label>
-        <p class="hint" style="margin-top:-6px;">Or paste the text directly below. One or more
-          <code>INGREDIENT</code> blocks — paste as many as you like in one file.</p>
-        <label>Ingredient data
-          <textarea id="import-ing-textarea" rows="16" style="font-family:var(--font-mono); font-size:.8rem;" placeholder="INGREDIENT
-name: Jasmine Rice
-UNIT_INFORMATION
-standard_unit: cup_cooked
-standard_unit_weight_g: 158
-calories_per_standard_unit: 205
-DENSITY_CONVERSION
-grams_per_cup_dry: 185
-grams_per_cup_cooked: 158
-PACKAGE_INFORMATION
-common_package_unit: bag
-units_per_package: 1
-package_weight_g: 2268
-PRICE_INFORMATION
-ALDI
-package_price: 4.99
-package_size_g: 2268
-KROGER
-package_price: 5.99
-package_size_g: 2268"></textarea>
-        </label>
-        <div class="modal-actions">
-          <span></span>
-          <button type="button" id="import-ing-preview-btn" class="btn btn-primary">Preview import</button>
-        </div>
-      </div>
-
-      <div id="import-ing-preview-step" class="hidden">
-        <div id="import-ing-preview-list"></div>
-        <div class="modal-actions">
-          <button type="button" id="import-ing-back-btn" class="btn btn-ghost">Back</button>
-          <button type="button" id="import-ing-confirm-btn" class="btn btn-primary">Import ingredients</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- Recipe overview: simple single-screen read view (ingredients + steps, no interaction) -->
-  <div id="recipe-overview-modal" class="modal modal-overview hidden">
-    <div class="modal-head">
-      <h3 id="overview-recipe-title">Recipe</h3>
-      <button class="icon-btn modal-close" data-close="recipe-overview-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <img id="overview-cover-img" class="rc-cover hidden" alt="" />
-      <div id="overview-servings" class="rc-servings" style="margin-bottom:16px;"></div>
-      <h4 style="margin-top:0;">Ingredients</h4>
-      <div id="overview-ingredient-list" class="cook-ingredient-list"></div>
-      <h4>Steps</h4>
-      <ol id="overview-steps-list" class="overview-steps-list"></ol>
-    </div>
-  </div>
-
-  <!-- Missing ingredients confirmation before Cook Mode -->
-  <div id="cook-confirm-modal" class="modal hidden">
-    <div class="modal-head">
-      <h3>Missing ingredients</h3>
-      <button class="icon-btn modal-close" data-close="cook-confirm-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <p class="hint" style="margin-top:0;">Your pantry is short on a few things for <strong id="cook-confirm-recipe-name"></strong>:</p>
-      <div id="cook-confirm-missing-list" class="missing-list"></div>
-      <div class="modal-actions">
-        <button type="button" id="cook-confirm-cancel-btn" class="btn btn-ghost">Cancel</button>
-        <button type="button" id="cook-confirm-anyway-btn" class="btn btn-primary">Cook anyway</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="shop-review-modal" class="modal modal-wide hidden">
-    <div class="modal-head">
-      <h3>Review what you bought</h3>
-      <button class="icon-btn modal-close" data-close="shop-review-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <p class="hint" style="margin-top:0;">Change anything that didn't match the plan — a different package size, a different unit, less than you needed. Anything still short stays on your shopping list.</p>
-      <div id="shop-review-rows" class="shop-review-rows"></div>
-      <div class="shop-review-extra">
-        <strong>Bought something else?</strong>
-        <div class="ing-combo" id="shop-extra-combo">
-          <input type="text" class="ing-combo-search" placeholder="Search to add an item that wasn't on the list…" autocomplete="off" />
-          <input type="hidden" id="shop-extra-ingredient" />
-          <div class="ing-combo-list hidden"></div>
-        </div>
-      </div>
-      <p id="shop-review-footer" class="hint"></p>
-      <div class="modal-actions">
-        <button type="button" id="shop-review-cancel" class="btn btn-ghost">Back</button>
-        <button type="button" id="shop-review-confirm" class="btn btn-primary">Add to pantry</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="meal-modal" class="modal hidden">
-    <div class="modal-head">
-      <h3 id="meal-modal-title">Add meal</h3>
-      <button class="icon-btn modal-close" data-close="meal-modal">✕</button>
-    </div>
-    <div class="modal-body">
-      <label>Meal
-        <select id="meal-type-select">
-          <option value="breakfast">🍳 Breakfast</option>
-          <option value="lunch">🥪 Lunch</option>
-          <option value="dinner">🍽️ Dinner</option>
-          <option value="snack">🍿 Snack</option>
-        </select>
-      </label>
-
-      <div class="meal-type-toggle">
-        <button class="toggle-btn active" data-mealtype="cook" id="toggle-cook">Cook something</button>
-        <button class="toggle-btn" data-mealtype="leftover" id="toggle-leftover">Eat leftovers</button>
-        <button class="toggle-btn" data-mealtype="quick" id="toggle-quick">Quick item</button>
-        <button class="toggle-btn" data-mealtype="note" id="toggle-note">Note</button>
-      </div>
-
-      <div id="meal-cook-fields">
-        <label>Recipe
-          <select id="meal-recipe-select"></select>
-        </label>
-        <div class="field-row">
-          <label>Servings to cook (batch)
-            <input type="number" id="meal-batch-servings" min="1" value="4" />
-          </label>
-          <label>Servings eaten today
-            <input type="number" id="meal-eaten-servings" min="0" value="4" />
-          </label>
-        </div>
-        <p class="hint" id="cook-hint">Leftover servings are automatically saved so you can schedule them later in the week.</p>
-      </div>
-
-      <div id="meal-leftover-fields" class="hidden">
-        <label>From
-          <select id="meal-leftover-select"></select>
-        </label>
-        <label>Servings eaten today
-          <input type="number" id="meal-leftover-servings" min="1" value="1" />
-        </label>
-      </div>
-
-      <div id="meal-quick-fields" class="hidden">
-        <p class="hint" style="margin-top:0;">For things that aren't really a "recipe" — cereal, coffee, a piece of fruit. Pick the ingredient and how much.</p>
-        <label>Ingredient
-          <div class="ing-combo" id="meal-quick-ingredient-combo">
-            <input type="text" class="ing-combo-search" placeholder="Search ingredients…" autocomplete="off" />
-            <input type="hidden" id="meal-quick-ingredient" />
-            <div class="ing-combo-list hidden"></div>
-          </div>
-        </label>
-        <div class="field-row">
-          <label>Amount
-            <input type="number" id="meal-quick-qty" min="0" step="any" value="1" />
-          </label>
-          <label>Unit
-            <select id="meal-quick-unit"></select>
-          </label>
-        </div>
-      </div>
-
-      <div id="meal-note-fields" class="hidden">
-        <p class="hint" style="margin-top:0;">Just a label for planning — eating out, dinner at Mom's, skipping lunch. It doesn't touch ingredients, calories, or your shopping list.</p>
-        <label>What's the plan?
-          <input type="text" id="meal-note-text" maxlength="80" placeholder="Eating out, dinner at Mom's…" autocomplete="off" />
-        </label>
-      </div>
-
-      <div class="modal-actions">
-        <button id="delete-meal-btn" class="btn btn-danger hidden">Remove meal</button>
-        <button id="save-meal-btn" class="btn btn-primary">Add to plan</button>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- Crop / zoom overlay — deliberately OUTSIDE #modal-backdrop and independent of it,
-     so it can sit on top of the recipe/ingredient editor without ever having to hide
-     or restore that editor. -->
-<div id="crop-overlay" class="modal-backdrop hidden">
-  <div id="crop-modal" class="modal modal-wide">
-    <div class="modal-head">
-      <h3>Crop &amp; zoom</h3>
-      <button class="icon-btn" id="crop-close-x">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="crop-stage">
-        <img id="crop-image" alt="" />
-      </div>
-      <p class="hint">Drag to reposition, scroll or pinch to zoom, drag the corner handles to resize the crop area.</p>
-      <div class="modal-actions">
-        <button type="button" id="crop-cancel-btn" class="btn btn-ghost">Cancel</button>
-        <button type="button" id="crop-confirm-btn" class="btn btn-primary">Use this photo</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Cook Mode — full-screen, independent overlay: ingredients to gather + scrollable steps -->
-<div id="cook-overlay" class="cook-overlay hidden">
-  <div class="cook-header">
-    <button id="cook-close-btn" class="icon-btn" aria-label="Close cook mode">✕</button>
-    <h2 id="cook-recipe-title">Recipe</h2>
-    <span id="cook-servings-label" class="cook-servings-label"></span>
-  </div>
-  <div class="cook-body">
-    <section class="cook-section">
-      <h3>🛒 Gather these</h3>
-      <div id="cook-ingredient-list" class="cook-ingredient-list"></div>
-    </section>
-    <section class="cook-section">
-      <h3>📋 Steps</h3>
-      <div id="cook-steps-list" class="cook-steps-list"></div>
-    </section>
-    <button type="button" id="cook-done-btn" class="btn btn-primary cook-done-btn">✅ I cooked this — remove ingredients from pantry</button>
-  </div>
-</div>
-
-<div id="toast" class="toast hidden"></div>
-
-<script type="module" src="firebase-config.js"></script>
-<script type="module" src="app.js"></script>
-</body>
-</html>
+/* ============ Tokens ============ */
+:root{
+  --sage-50: #EEF1E6;
+  --sage-100: #E2E7D6;
+  --sage-500: #7C9473;
+  --sage-700: #566B4E;
+  --ink: #262A1F;
+  --ink-soft: #545a48;
+  --paper: #FBFAF4;
+  --paper-line: #DCDCC9;
+  --brick: #B34B32;
+  --brick-dark: #8f3a26;
+  --mustard: #D9A441;
+  --mustard-soft: #F3E1B5;
+  --danger: #A83A3A;
+  --shadow: 0 1px 2px rgba(38,42,31,.06), 0 6px 18px rgba(38,42,31,.07);
+  --radius-card: 14px;
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Public Sans', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+html{background:var(--sage-50);}
+html,body{overscroll-behavior-y:none;}
+body{
+  background: var(--sage-50);
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(38,42,31,.05) 1px, transparent 0);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  min-height:100vh;
+  min-height:100dvh;
+}
+.hidden{display:none !important;}
+button{font-family:inherit;cursor:pointer;}
+input,select{font-family:inherit;}
+h1,h2,h3,h4{font-family: var(--font-display); margin:0; color: var(--ink);}
+label{display:block; font-size:.82rem; font-weight:600; color:var(--ink-soft); margin-bottom:14px;}
+label input, label select, label textarea{
+  display:block; width:100%; margin-top:6px;
+  padding:9px 11px; border:1.5px solid var(--paper-line); border-radius:9px;
+  background:var(--paper); font-size:.95rem; color:var(--ink);
+}
+label input:focus, label select:focus, label textarea:focus{
+  outline:2px solid var(--sage-500); outline-offset:1px; border-color:var(--sage-500);
+}
+/* Checkboxes must NOT inherit the block/full-width text-input styling above,
+   even when they sit inside a <label> (e.g. shopping list rows) */
+input[type="checkbox"]{
+  display:inline-block; width:16px; height:16px; flex-shrink:0;
+  padding:0; margin:0; border:1.5px solid var(--paper-line); border-radius:4px;
+  background:var(--paper); accent-color:var(--sage-500);
+}
+input[type="file"]{
+  display:block; width:100%; margin-top:6px; font-size:.82rem; color:var(--ink-soft);
+}
+.label-inline{display:inline-block;}
+.field-row{display:flex; gap:16px;}
+.field-row > label{flex:1;}
+.hint{font-size:.78rem; color:var(--ink-soft); margin-top:-8px; margin-bottom:14px; line-height:1.4;}
+
+/* ============ Buttons ============ */
+.btn{
+  border:none; border-radius:9px; padding:10px 18px; font-weight:700; font-size:.88rem;
+  letter-spacing:.01em; transition: transform .08s ease, box-shadow .08s ease;
+}
+.btn:active{transform: translateY(1px);}
+.btn-primary{background: var(--brick); color:#fff; box-shadow: var(--shadow);}
+.btn-primary:hover{background: var(--brick-dark);}
+.btn-ghost{background:transparent; color:var(--sage-700); border:1.5px solid var(--sage-500);}
+.btn-ghost:hover{background: var(--sage-100);}
+.btn-danger{background:transparent; color:var(--danger); border:1.5px solid var(--danger);}
+.btn-danger:hover{background:#f6e6e6;}
+.btn-small{padding:6px 12px; font-size:.78rem;}
+.icon-btn{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:8px;
+  width:34px; height:34px; font-size:1rem; color:var(--ink);
+}
+.icon-btn:hover{background:var(--sage-100);}
+
+/* ============ Auth screen ============ */
+.loading-screen{
+  min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center;
+  background:var(--sage-50);
+}
+.loading-brand-mark{font-size:2.6rem; animation:loading-pulse 1.3s ease-in-out infinite;}
+@keyframes loading-pulse{ 0%,100%{opacity:.4; transform:scale(.94);} 50%{opacity:1; transform:scale(1);} }
+.auth-screen{
+  min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.auth-card{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:18px;
+  padding:38px 34px; width:100%; max-width:380px; box-shadow: var(--shadow); position:relative;
+}
+.auth-card::before{
+  content:""; position:absolute; top:-10px; left:50%; transform:translateX(-50%);
+  width:26px; height:26px; border-radius:50%; background:var(--sage-50);
+  border:1.5px solid var(--paper-line);
+}
+.auth-brand{text-align:center; margin-bottom:26px;}
+.auth-brand-mark{font-size:2.2rem;}
+.auth-brand h1{font-size:2rem; margin-top:4px;}
+.auth-tagline{font-style:italic; color:var(--ink-soft); margin-top:4px; font-size:.92rem;}
+.auth-error{color:var(--danger); font-size:.83rem; min-height:1.2em; margin:-6px 0 10px;}
+.auth-buttons{display:flex; flex-direction:column; gap:10px;}
+
+/* ============ Shell ============ */
+.app-shell{min-height:100vh; min-height:100dvh; display:flex; flex-direction:column;}
+.topbar{
+  display:flex; align-items:center; gap:26px; padding:14px 28px;
+  padding-top:calc(14px + env(safe-area-inset-top, 0px));
+  padding-left:calc(28px + env(safe-area-inset-left, 0px));
+  padding-right:calc(28px + env(safe-area-inset-right, 0px));
+  background:var(--paper); border-bottom:1.5px solid var(--paper-line);
+  position:sticky; top:0; z-index:20;
+}
+.brand{display:flex; align-items:center; gap:8px; font-family:var(--font-display); font-weight:700; font-size:1.25rem;}
+.brand-mark{font-size:1.4rem;}
+.tabs{display:flex; gap:2px; flex:1; overflow-x:auto;}
+.tab-btn{
+  background:transparent; border:none; padding:10px 18px 8px;
+  font-weight:600; font-size:.86rem; color:var(--ink-soft);
+  border-bottom:3px solid transparent; white-space:nowrap;
+}
+.tab-btn:hover{color:var(--ink);}
+.tab-btn.active{color:var(--brick); border-bottom-color:var(--brick);}
+.signout-btn{
+  background:transparent; border:1.5px solid var(--paper-line); border-radius:8px;
+  width:34px; height:34px; font-size:1rem; color:var(--ink-soft);
+}
+.signout-btn:hover{background:var(--sage-100); color:var(--ink);}
+
+.content{flex:1; padding:26px 28px 60px; max-width:1180px; width:100%; margin:0 auto;}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+.panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:14px; margin-bottom:20px; flex-wrap:wrap;}
+.panel-sub{color:var(--ink-soft); font-size:.85rem;}
+
+/* ============ Week plan ============ */
+.week-nav{display:flex; align-items:center; gap:12px;}
+.week-nav h2{min-width:210px; text-align:center;}
+.week-calories{font-family:var(--font-mono); font-size:.85rem; color:var(--sage-700); background:var(--sage-100); padding:6px 12px; border-radius:20px;}
+.week-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(155px, 1fr)); gap:12px;}
+.day-col{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:var(--radius-card);
+  padding:12px; min-height:220px; display:flex; flex-direction:column; gap:8px;
+}
+.day-col.is-today{border-color:var(--brick); box-shadow:0 0 0 1px var(--brick);}
+.day-col-head{display:flex; justify-content:space-between; align-items:baseline;}
+.day-name{font-family:var(--font-display); font-weight:600; font-size:1rem;}
+.day-date{font-size:.72rem; color:var(--ink-soft);}
+.day-cal{font-family:var(--font-mono); font-size:.7rem; color:var(--sage-700);}
+.meal-chip{
+  background:var(--sage-50); border:1px solid var(--paper-line); border-radius:9px;
+  padding:8px 9px; font-size:.8rem; cursor:grab; position:relative;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+.meal-chip:hover{border-color:var(--sage-500);}
+.meal-chip:active{cursor:grabbing;}
+.meal-chip.dragging{opacity:.4;}
+.meal-chip.drag-over-top{box-shadow:inset 0 2px 0 var(--brick);}
+.meal-chip.drag-over-bottom{box-shadow:inset 0 -2px 0 var(--brick);}
+.day-col.drag-over{background:var(--sage-100); outline:2px dashed var(--sage-500); outline-offset:-2px;}
+.meal-chip .chip-title{font-weight:700; display:flex; align-items:center; gap:5px;}
+.chip-ing-icon{display:inline-flex; width:16px; height:16px; border-radius:50%; overflow:hidden; flex-shrink:0; align-items:center; justify-content:center; font-size:.85rem;}
+.chip-ing-icon img{width:100%; height:100%; object-fit:cover;}
+.meal-chip .chip-meta{color:var(--ink-soft); font-size:.7rem; margin-top:2px;}
+.meal-chip.leftover{background:var(--mustard-soft); border-color:#e3c479;}
+/* Today's meals are what's actually on deck to cook — make that unmistakable rather
+   than just relying on the day column's border. */
+.day-col.is-today .meal-chip{
+  border-color:var(--brick); background:#fdf1ea; box-shadow:0 0 0 1px var(--brick);
+}
+.day-col.is-today .meal-chip.leftover{background:var(--mustard-soft);}
+.chip-cook-btn{
+  display:block; width:100%; margin-top:7px; padding:6px; border-radius:7px;
+  background:var(--brick); color:#fff; border:none; font-size:.74rem; font-weight:700; cursor:pointer;
+}
+.chip-cook-btn:hover{background:var(--brick-dark);}
+.add-meal-btn{
+  border:1.5px dashed var(--paper-line); background:transparent; border-radius:9px;
+  padding:8px; font-size:.78rem; color:var(--ink-soft); text-align:center;
+}
+.add-meal-btn:hover{border-color:var(--sage-500); color:var(--sage-700);}
+.day-footer-btns{display:flex; gap:6px;}
+.day-footer-btns .add-meal-btn{flex:1;}
+.log-food-btn{border-style:solid; background:var(--sage-50);}
+.log-food-btn:hover{background:var(--sage-100);}
+
+/* ============ Cards / recipes ============ */
+.card-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px;}
+.recipe-card{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:var(--radius-card);
+  padding:16px; box-shadow: var(--shadow); cursor:pointer; position:relative;
+}
+.recipe-card::before{
+  content:""; position:absolute; top:10px; left:50%; transform:translateX(-50%);
+  width:16px; height:16px; border-radius:50%; background:var(--sage-50); border:1.5px solid var(--paper-line);
+}
+.rc-fav-btn{
+  position:absolute; top:8px; right:8px; z-index:1; width:30px; height:30px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center; font-size:1.05rem; line-height:1;
+  background:var(--paper); border:1.5px solid #c9c9c2; color:#a3a39a; cursor:pointer;
+}
+.rc-fav-btn.active{color:var(--danger); border-color:var(--danger); background:#fdf1f1;}
+.recipe-card h3{font-size:1.05rem; margin-top:14px; margin-bottom:6px; padding-right:26px;}
+.recipe-card .rc-servings{font-size:.75rem; color:var(--ink-soft); font-family:var(--font-mono);}
+.rc-ingredients{display:flex; flex-wrap:wrap; gap:3px; margin-top:8px;}
+.ing-badge{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:19px; height:19px; border-radius:50%; background:var(--sage-100);
+  font-size:.68rem; border:1px solid var(--paper-line); overflow:hidden;
+}
+.ing-badge img{width:100%; height:100%; object-fit:cover;}
+.rc-cal{margin-top:10px; font-family:var(--font-mono); font-size:.72rem; color:var(--sage-700);}
+.rc-overview-link{
+  display:block; width:100%; text-align:center; background:transparent; border:none;
+  color:var(--sage-700); font-size:.78rem; font-weight:600; text-decoration:underline;
+  padding:0; margin-top:12px; cursor:pointer;
+}
+.rc-overview-link:hover{color:var(--brick);}
+.rc-cook-btn{width:100%; margin-top:6px;}
+.rc-cook-btn.insufficient{background:var(--paper); color:var(--ink-soft); border:1.5px solid var(--paper-line);}
+.rc-cook-btn.insufficient:hover{background:var(--sage-100);}
+
+.missing-list{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
+.missing-item{
+  display:flex; align-items:center; gap:10px; background:var(--mustard-soft); border:1.5px solid #e3c479;
+  border-radius:10px; padding:9px 12px;
+}
+.missing-name{flex:1; font-weight:600; font-size:.9rem;}
+.missing-amounts{font-family:var(--font-mono); font-size:.78rem; color:var(--brick-dark);}
+
+.overview-steps-list{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px 28px;
+  padding-left:22px; margin:0; align-items:start;
+}
+.overview-steps-list li{font-size:1rem; line-height:1.55; padding-left:6px;}
+.overview-steps-list img{display:block; max-width:280px; width:100%; border-radius:10px; margin:8px 0;}
+
+/* ============ Pantry ============ */
+.pantry-list{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px;}
+.pantry-item{
+  display:flex; align-items:center; gap:10px; background:var(--paper);
+  border:1.5px solid var(--paper-line); border-radius:11px; padding:9px 12px;
+}
+.pantry-item .p-emoji{
+  font-size:1.3rem; width:30px; height:30px; border-radius:50%; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center; background:var(--sage-100); flex-shrink:0;
+}
+.p-emoji img{width:100%; height:100%; object-fit:cover;}
+.pantry-item .p-name{flex:1; font-weight:600; font-size:.88rem;}
+.pantry-item.stocked{border-color:var(--sage-300, var(--paper-line)); background:var(--sage-100, var(--paper));}
+.p-controls{display:inline-flex; align-items:center; gap:4px; flex-shrink:0;}
+.pantry-item input.p-qty{width:58px; padding:6px 4px; text-align:center; font-family:var(--font-mono); font-size:.85rem;}
+.p-step{width:30px; height:30px; border-radius:8px; border:1.5px solid var(--paper-line); background:var(--paper); font-size:1.1rem; line-height:1; cursor:pointer; color:inherit;}
+.p-step:active{transform:scale(.94);}
+.p-unit-select{padding:5px 2px; font-size:.75rem; max-width:64px; border-radius:8px; border:1.5px solid var(--paper-line); background:var(--paper); color:inherit;}
+.pantry-search-row{display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;}
+.pantry-search-row input{flex:1; min-width:200px; padding:10px 12px; font-size:1rem;}
+.pantry-summary{font-size:.78rem; color:var(--ink-soft);}
+/* purchase review */
+.shop-review-rows{display:flex; flex-direction:column; gap:8px; margin:10px 0 14px;}
+.shop-review-row{display:grid; grid-template-columns:34px 1fr auto; gap:4px 10px; align-items:center; border:1.5px solid var(--paper-line); border-radius:11px; padding:8px 10px;}
+.sr-name{font-weight:600; font-size:.9rem; display:flex; flex-direction:column;}
+.sr-need{font-weight:400; font-size:.74rem; color:var(--ink-soft);}
+.sr-entry{display:inline-flex; align-items:center; gap:4px;}
+.sr-entry .sr-qty{width:66px; padding:6px 4px; text-align:center; font-family:var(--font-mono);}
+.sr-entry .sr-unit{padding:5px 2px; font-size:.78rem; max-width:70px;}
+.sr-diff{grid-column:2 / 4; font-size:.76rem; color:var(--ink-soft);}
+.sr-diff.ok{color:#3b7a3b;} .sr-diff.short{color:#b4531f;} .sr-diff.bad{color:#b00020;}
+.shop-review-extra{display:flex; flex-direction:column; gap:6px; margin-bottom:8px;}
+
+/* ============ Spices tab ============ */
+.spice-section-title{font-size:1.1rem; margin-bottom:4px;}
+.base-spice-list{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px;}
+.spice-row{
+  display:flex; align-items:center; gap:10px; background:var(--paper);
+  border:1.5px solid var(--paper-line); border-radius:11px; padding:9px 12px;
+}
+.spice-row .p-emoji{
+  font-size:1.3rem; width:30px; height:30px; border-radius:50%; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center; background:var(--sage-100); flex-shrink:0;
+}
+.spice-row .p-emoji img{width:100%; height:100%; object-fit:cover;}
+.spice-row .p-name{flex:1; font-weight:600; font-size:.88rem; cursor:pointer;}
+.spice-have-toggle{
+  border:1.5px solid var(--paper-line); border-radius:20px; padding:6px 12px; font-size:.76rem; font-weight:700;
+  background:var(--paper); color:var(--ink-soft); white-space:nowrap;
+}
+.spice-have-toggle.have{background:var(--sage-100); border-color:var(--sage-500); color:var(--sage-700);}
+.spice-have-toggle.need{background:var(--mustard-soft); border-color:#e3c479; color:var(--brick-dark);}
+
+/* blend component breakdown, shown wherever a recipe uses a blend ingredient */
+.blend-breakdown{
+  margin-top:6px; padding:8px 10px; background:var(--sage-50); border:1px dashed var(--paper-line);
+  border-radius:9px; font-size:.78rem; color:var(--ink-soft);
+}
+.blend-breakdown-title{font-weight:700; color:var(--sage-700); margin-bottom:4px; display:block;}
+.blend-breakdown-row{display:flex; justify-content:space-between; gap:10px;}
+
+/* recipe ingredient substitute options, shown in Cook Mode / Recipe Overview */
+.ri-sub-display{
+  margin-top:6px; padding:8px 10px; background:var(--mustard-soft); border:1px dashed #e3c479;
+  border-radius:9px; font-size:.78rem; color:var(--brick-dark);
+}
+.ri-sub-display-title{font-weight:700; margin-bottom:4px; display:block;}
+.ri-sub-display-row{display:flex; justify-content:space-between; gap:10px;}
+
+/* ============ Ingredients table ============ */
+.ingredient-table{display:flex; flex-direction:column; gap:6px;}
+.ing-row{
+  display:grid; grid-template-columns:44px 1fr 90px 130px 32px; align-items:center; gap:10px;
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:10px; padding:8px 12px;
+  cursor:pointer; font-size:.87rem; overflow:hidden;
+}
+.ing-row:hover{border-color:var(--sage-500);}
+.ing-row .ir-emoji{
+  font-size:1.3rem; text-align:center; width:30px; height:30px; border-radius:50%; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center; background:var(--sage-100); margin:0 auto;
+}
+.ir-emoji img{width:100%; height:100%; object-fit:cover;}
+.ing-row .ir-name, .ing-row .ir-unit, .ing-row .ir-cal{
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ing-row .ir-name{font-weight:600;}
+.ing-row .ir-unit{color:var(--ink-soft); font-family:var(--font-mono); font-size:.78rem;}
+.ing-row .ir-cal{color:var(--sage-700); font-family:var(--font-mono); font-size:.78rem; text-align:right;}
+.ing-row.needs-review{border-color:var(--danger); background:#fdf1f1;}
+.ing-row .ir-cal-warning{color:var(--danger); font-weight:700;}
+
+.ing-status-badge{
+  display:inline-flex; align-items:center; justify-content:center; margin:0 auto;
+  width:24px; height:24px; border-radius:50%; font-weight:800; font-size:.8rem; color:#fff; flex-shrink:0;
+}
+.ing-status-badge.status-green{background:var(--sage-500);}
+.ing-status-badge.status-yellow{background:var(--mustard); color:var(--ink);}
+.ing-status-badge.status-red{background:var(--danger);}
+
+.panel-head-right{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+.sort-select-wrap{
+  display:flex; align-items:center; gap:8px; font-size:.82rem; font-weight:600; color:var(--ink-soft); margin:0;
+}
+.sort-select-wrap select{
+  margin:0; padding:7px 10px; border:1.5px solid var(--paper-line); border-radius:8px;
+  background:var(--paper); font-size:.85rem; color:var(--ink); font-weight:600;
+}
+
+/* ============ Shopping mode ============ */
+.shopping-mode-bar{
+  position:sticky; bottom:14px; margin-top:16px; max-width:640px;
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  background:var(--ink); color:#fff; padding:12px 18px; border-radius:12px; box-shadow:var(--shadow);
+}
+.shopping-mode-bar span{font-family:var(--font-mono); font-size:.85rem;}
+.shopping-list.mode-active .shop-item{cursor:pointer;}
+.shopping-list.mode-active .shop-check{width:20px; height:20px; accent-color: var(--sage-500);}
+.shopping-list.mode-active .shop-item:not(.warn):hover{border-color:var(--sage-500);}
+
+/* ============ Shopping list ============ */
+.store-picker{display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;}
+.store-picker-label{font-size:.82rem; font-weight:700; color:var(--ink-soft);}
+.store-checks{display:flex; gap:8px; flex-wrap:wrap;}
+.store-pill{
+  display:flex; align-items:center; gap:6px; background:var(--paper); border:1.5px solid var(--paper-line);
+  border-radius:20px; padding:6px 13px 6px 10px; font-size:.83rem; font-weight:600; cursor:pointer;
+}
+.store-pill input{width:auto; margin:0; padding:0;}
+.store-pill.on{border-color:var(--sage-500); background:var(--sage-100); color:var(--sage-700);}
+.shopping-total{
+  font-family:var(--font-body); font-size:.95rem; background:var(--mustard-soft);
+  border:1.5px solid #e3c479; border-radius:11px; padding:10px 16px; margin-bottom:14px;
+  display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+}
+.shopping-total .grand{font-weight:700; color:var(--brick-dark);}
+.shopping-list{display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:10px; align-items:start;}
+.shop-aisle-header{
+  grid-column:1 / -1; font-family:var(--font-display); font-weight:600; font-size:.95rem;
+  color:var(--sage-700); padding:14px 4px 4px; border-bottom:1.5px solid var(--paper-line);
+  margin-bottom:2px;
+}
+.shop-aisle-header:first-child{padding-top:0;}
+.shop-item{
+  display:flex; align-items:center; gap:12px; background:var(--paper);
+  border:1.5px solid var(--paper-line); border-radius:11px; padding:10px 14px;
+}
+.shop-item.checked{opacity:.45; text-decoration:line-through;}
+.shop-item.warn{background:var(--mustard-soft); border-color:#e3c479;}
+.shop-item .s-warn-note{font-size:.72rem; color:var(--brick-dark); display:block; max-width:220px; text-align:right; line-height:1.3;}
+.shop-item .s-emoji{
+  font-size:1.3rem; width:30px; height:30px; border-radius:50%; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center; background:var(--sage-100); flex-shrink:0;
+}
+.s-emoji img{width:100%; height:100%; object-fit:cover;}
+.shop-item .s-name{flex:1; font-weight:600; font-size:.92rem;}
+.shop-item .s-price-block{text-align:right;}
+.shop-item .s-price{font-family:var(--font-body); font-size:.92rem; font-weight:700; color:var(--brick); display:block;}
+.shop-item .s-amount{font-family:var(--font-mono); font-size:.76rem; color:var(--ink-soft); display:block; margin-top:2px;}
+.pantry-qty-edit{
+  display:none; align-items:center; justify-content:flex-end; gap:6px;
+  margin-top:6px; font-size:.72rem; color:var(--ink-soft); white-space:nowrap;
+}
+.shopping-list.mode-active .pantry-qty-edit{display:flex;}
+.pantry-qty-label{flex-shrink:0;}
+.pantry-qty-unit{flex-shrink:0;}
+.pantry-qty-input{
+  width:58px; padding:3px 5px; font-family:var(--font-mono); font-size:.78rem;
+  border:1.5px solid var(--sage-500); border-radius:5px; background:var(--paper); color:var(--ink);
+}
+.shop-item .s-amount-large{font-size:1.05rem; font-weight:700; color:var(--ink); margin-top:0;}
+.shop-item .s-needed-note{font-size:.7rem; color:var(--sage-700); font-style:italic;}
+.shop-item .s-noprice{font-size:.72rem; color:var(--ink-soft); font-style:italic;}
+.shop-item-wrap{display:block;}
+
+/* recipe text importer preview */
+.import-status-badge{
+  font-size:.7rem; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; margin-left:8px;
+}
+.import-status-badge.matched{background:var(--sage-100); color:var(--sage-700);}
+.import-status-badge.new{background:var(--mustard-soft); color:var(--brick-dark);}
+.import-status-badge.detailed{background:var(--sage-100); color:var(--sage-700);}
+.import-detailed-summary{
+  font-size:.76rem; color:var(--sage-700); background:var(--sage-50); border:1px dashed var(--paper-line);
+  border-radius:8px; padding:6px 10px; margin:-4px 0 10px;
+}
+
+.import-resolve-row{
+  margin:-4px 0 12px; padding:10px 12px; background:var(--sage-50); border:1.5px dashed var(--paper-line);
+  border-radius:10px;
+}
+.import-resolve-combo{margin-top:8px;}
+
+.import-similar-suggestion{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px;
+  padding:9px 11px; background:var(--mustard-soft); border:1.5px solid #e3c479; border-radius:9px;
+  font-size:.8rem; color:var(--ink);
+}
+.import-similar-icon{font-size:1rem;}
+.import-similar-options{display:flex; flex-wrap:wrap; gap:6px; width:100%;}
+.import-similar-pick{background:var(--paper);}
+
+.import-ing-card{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:12px;
+  padding:14px 16px; margin-bottom:12px;
+}
+.import-ing-card-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+.import-ing-card-head h4{margin:0; flex:1; font-size:1.02rem;}
+.import-ing-detail-list{display:flex; flex-direction:column; gap:3px; font-size:.83rem; color:var(--ink-soft); font-family:var(--font-mono);}
+.import-ing-detail-list strong{color:var(--ink); font-family:inherit; font-weight:700;}
+.import-ing-photo-row{display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid var(--paper-line);}
+.import-ing-photo-row label{margin:0; flex:1;}
+.import-ing-photo-thumb{width:40px; height:40px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line); flex-shrink:0;}
+.import-resolve-photo-row{display:flex; align-items:center; gap:10px; margin-top:10px;}
+.import-resolve-photo-row label{margin:0; flex:1; font-size:.85rem;}
+.import-resolve-photo-thumb{width:36px; height:36px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line); flex-shrink:0;}
+
+.import-prompt-details{
+  background:var(--sage-50); border:1.5px solid var(--paper-line); border-radius:11px;
+  padding:12px 14px; margin-bottom:18px;
+}
+.import-prompt-details summary{cursor:pointer; font-weight:700; font-size:.88rem; color:var(--sage-700);}
+.import-prompt-details[open] summary{margin-bottom:10px;}
+.import-prompt-text{
+  display:block; width:100%; box-sizing:border-box; margin:8px 0; padding:10px 12px;
+  border:1.5px solid var(--paper-line); border-radius:9px; background:var(--paper);
+  font-family:var(--font-mono); font-size:.74rem; line-height:1.5; color:var(--ink-soft); resize:vertical;
+}
+
+/* ingredient price grid inside modal */
+.ingredient-prices{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
+.price-row{display:grid; grid-template-columns:100px 1fr; align-items:center; gap:8px;}
+.ingredient-prices.packaged .price-row{grid-template-columns:100px 1fr 90px;}
+.ingredient-prices.has-larger-units .price-row{grid-template-columns:100px 1fr 100px;}
+.ingredient-prices.packaged.has-larger-units .price-row{grid-template-columns:100px 1fr 90px 100px;}
+.price-row span{font-size:.85rem; font-weight:600; color:var(--ink-soft);}
+.price-row input, .price-row select{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono); font-size:.82rem;}
+.price-row .package-size-input{display:none;}
+.ingredient-prices.packaged .price-row .package-size-input{display:block;}
+.checkbox-inline{display:flex; align-items:center; gap:9px; font-size:.88rem; font-weight:600; color:var(--ink); margin-bottom:8px;}
+.checkbox-inline input{margin:0;}
+
+/* autofill suggestion */
+.autofill-suggestion{
+  display:flex; align-items:center; gap:10px; background:var(--mustard-soft); border:1.5px solid #e3c479;
+  border-radius:10px; padding:9px 12px; margin:-8px 0 14px; font-size:.83rem;
+}
+.autofill-suggestion span{flex:1; color:var(--ink);}
+.autofill-suggestion .icon-btn{width:26px; height:26px; font-size:.8rem; flex-shrink:0;}
+
+/* bulk add */
+#bulk-add-textarea{
+  display:block; width:100%; margin-top:6px; padding:10px 12px; border:1.5px solid var(--paper-line);
+  border-radius:9px; background:var(--paper); font-family:var(--font-mono); font-size:.88rem; line-height:1.5; resize:vertical;
+}
+
+/* custom units */
+.custom-units-list{display:flex; flex-direction:column; gap:10px; margin-bottom:6px;}
+.cu-row{display:flex; flex-direction:column; gap:8px; background:var(--sage-50); border:1.5px solid var(--paper-line); border-radius:10px; padding:10px 12px;}
+.cu-row-top{display:flex; align-items:center; gap:8px;}
+.cu-row-top .cu-name{flex:1; min-width:0;}
+.cu-row-bottom{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.cu-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:var(--font-mono); font-size:.85rem;}
+.cu-row .cu-factor{width:72px; flex-shrink:0;}
+.cu-dir-toggle{display:flex; gap:4px; flex-shrink:0;}
+.cu-dir-btn{padding:6px 10px; border-radius:7px; border:1.5px solid var(--paper-line); background:var(--paper); font-size:.76rem; font-weight:700; color:var(--ink-soft); white-space:nowrap; flex-shrink:0;}
+.cu-dir-btn.active{background:var(--sage-500); border-color:var(--sage-500); color:#fff;}
+.cu-preview{font-size:.78rem; color:var(--sage-700); font-family:var(--font-mono); line-height:1.4;}
+.cu-remove{background:transparent; border:none; color:var(--danger); font-size:1.15rem; flex-shrink:0; padding:2px 4px; line-height:1;}
+
+/* per-store pricing unit selector (only relevant/shown when a "larger" custom unit exists) */
+.price-row .price-unit-select{display:none;}
+.ingredient-prices.has-larger-units .price-row .price-unit-select{display:block;}
+
+/* ============ Photos (ingredient / recipe / step) ============ */
+.photo-preview{display:flex; align-items:center; gap:12px; margin:-6px 0 14px;}
+.photo-preview img{width:60px; height:60px; object-fit:cover; border-radius:10px; border:1.5px solid var(--paper-line);}
+.photo-preview.cover-preview img{width:100%; max-width:100%; height:140px; border-radius:12px; object-fit:cover;}
+.photo-preview.cover-preview{flex-direction:column; align-items:stretch;}
+
+.rc-cover{width:100%; height:130px; object-fit:cover; border-radius:11px; margin-bottom:10px;}
+
+.rs-photo-row{display:flex; align-items:center; gap:8px; margin-top:6px;}
+.rs-photo-thumb{width:44px; height:44px; object-fit:cover; border-radius:8px; border:1.5px solid var(--paper-line);}
+.rs-photo-input{font-size:.76rem; max-width:200px;}
+
+/* ============ Searchable ingredient combo (recipe rows + quick-item picker) ============ */
+.ing-combo{position:relative;}
+.ing-combo-search{
+  display:block; width:100%; box-sizing:border-box; padding:7px 9px; font-size:.88rem;
+  border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); font-family:inherit;
+}
+.ing-combo-list{
+  position:absolute; top:100%; left:0; right:0; margin-top:4px; z-index:30;
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:9px;
+  max-height:220px; overflow-y:auto; box-shadow:var(--shadow); padding:4px;
+}
+.ing-combo-item{padding:8px 10px; font-size:.87rem; border-radius:6px; cursor:pointer;}
+.ing-combo-item:hover{background:var(--sage-100);}
+.ing-combo-empty{padding:8px 10px; font-size:.83rem; color:var(--ink-soft); font-style:italic;}
+
+/* ============ Recipe modal internals ============ */
+.recipe-ingredients{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
+.ri-row{display:grid; grid-template-columns:1fr 90px 90px 30px; gap:8px; align-items:center;}
+.ri-row-wrap{margin-bottom:2px;}
+.ri-subs-list{display:flex; flex-direction:column; gap:6px; margin:6px 0 0 22px;}
+.ri-sub-row{display:grid; grid-template-columns:16px 1fr 80px 80px 26px; gap:6px; align-items:center;}
+.ri-sub-label{color:var(--sage-700); font-weight:700; text-align:center;}
+.ri-sub-row .ri-remove{width:22px; height:22px; font-size:.7rem;}
+.ri-add-sub-link{
+  display:block; margin:6px 0 0 22px; background:none; border:none; padding:0;
+  color:var(--sage-700); font-size:.76rem; font-weight:600; text-decoration:underline; cursor:pointer;
+}
+.ri-row select, .ri-row input{padding:7px 9px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper);}
+.ri-remove{background:transparent; border:none; color:var(--danger); font-size:1.1rem;}
+.recipe-steps{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
+.rs-row{display:flex; gap:8px; align-items:flex-start;}
+.rs-row .rs-num{font-family:var(--font-mono); font-weight:700; color:var(--sage-700); padding-top:9px; width:22px;}
+.rs-row textarea{flex:1; padding:8px 10px; border:1.5px solid var(--paper-line); border-radius:7px; background:var(--paper); min-height:44px; resize:vertical; font-family:inherit;}
+.rs-remove{background:transparent; border:none; color:var(--danger); font-size:1.1rem;}
+
+/* ============ Modals ============ */
+.modal-backdrop{
+  position:fixed; inset:0; background:rgba(38,42,31,.45); display:flex; align-items:center; justify-content:center;
+  padding:20px; z-index:100;
+}
+#crop-overlay{ z-index:300; } /* always above the regular modal-backdrop */
+.modal{
+  background:var(--paper); border-radius:16px; padding:0; width:100%; max-width:440px;
+  max-height:88vh; overflow-y:auto; box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+.modal-wide{max-width:640px;}
+.modal-overview{width:94vw; max-width:1400px;}
+.modal-head{
+  display:flex; justify-content:space-between; align-items:center; padding:18px 22px;
+  border-bottom:1.5px solid var(--paper-line); position:sticky; top:0; background:var(--paper);
+}
+.modal-body{padding:20px 22px 26px;}
+.modal-body h4{margin:18px 0 10px; font-size:.95rem;}
+.modal-actions{display:flex; justify-content:space-between; gap:10px; margin-top:18px;}
+
+.meal-type-toggle{display:flex; gap:8px; margin-bottom:18px;}
+
+/* ============ Crop / zoom modal ============ */
+.crop-stage{width:100%; height:360px; background:#1c1c16; border-radius:11px; overflow:hidden; margin-bottom:6px;}
+.crop-stage img{display:block; max-width:100%;}
+#crop-modal .modal-body{padding-bottom:22px;}
+.toggle-btn{
+  flex:1; padding:9px; border-radius:9px; border:1.5px solid var(--paper-line); background:var(--paper);
+  font-weight:700; font-size:.84rem; color:var(--ink-soft);
+}
+.toggle-btn.active{background:var(--sage-500); border-color:var(--sage-500); color:#fff;}
+
+/* ============ Cook Mode ============ */
+.cook-overlay{
+  position:fixed; inset:0; background:var(--sage-50); z-index:250;
+  display:flex; flex-direction:column; overflow-y:auto;
+}
+.cook-header{
+  position:sticky; top:0; z-index:2; background:var(--paper); border-bottom:1.5px solid var(--paper-line);
+  padding:14px 20px; padding-top:calc(14px + env(safe-area-inset-top, 0px));
+  display:flex; align-items:center; gap:14px;
+}
+.cook-header h2{flex:1; text-align:center; font-size:1.15rem;}
+.cook-servings-label{font-size:.78rem; color:var(--ink-soft); font-family:var(--font-mono); min-width:34px; text-align:right;}
+.cook-body{max-width:1080px; width:100%; margin:0 auto; padding:22px 20px 60px; display:flex; flex-direction:column; gap:30px;}
+.cook-section h3{font-size:1.05rem; margin-bottom:12px;}
+.cook-ingredient-list{display:flex; flex-direction:column; gap:8px;}
+.cook-ing-item{
+  display:flex; align-items:center; gap:12px; background:var(--paper);
+  border:1.5px solid var(--paper-line); border-radius:11px; padding:12px 14px; cursor:pointer;
+}
+.cook-ing-item .s-emoji{
+  font-size:.8rem; width:20px; height:20px; border-radius:50%; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center; background:var(--sage-100); flex-shrink:0;
+}
+.cook-ing-item input[type="checkbox"]{width:20px; height:20px;}
+.cook-ing-item.checked{opacity:.45; text-decoration:line-through;}
+.cook-ing-name{flex:1; font-weight:600;}
+.cook-ing-qty{font-family:var(--font-mono); color:var(--brick); font-size:.9rem;}
+.cook-steps-list{display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px; align-items:start;}
+.cook-step-card{
+  background:var(--paper); border:1.5px solid var(--paper-line); border-radius:16px; padding:18px 20px;
+}
+.cook-step-num{font-family:var(--font-mono); font-weight:700; color:var(--sage-700); font-size:.82rem; margin-bottom:8px;}
+.cook-step-photo{
+  display:block; width:100%; max-height:400px; object-fit:contain; background:var(--sage-50);
+  border-radius:12px; margin-bottom:12px;
+}
+.cook-step-text{font-size:1.12rem; line-height:1.55; color:var(--ink);}
+.cook-done-btn{align-self:center; width:100%; max-width:420px; margin:10px auto 0; padding:14px; font-size:.95rem;}
+
+/* ============ Toast ============ */
+.toast{
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:#fff; padding:11px 20px; border-radius:30px;
+  font-size:.85rem; box-shadow:var(--shadow); z-index:200;
+}
+
+/* ============ Responsive ============ */
+.mobile-tab-toggle{display:none;}
+
+@media (max-width:820px){
+  .week-grid{grid-template-columns:1fr; }
+  .topbar{
+    flex-wrap:wrap; gap:10px; position:sticky; top:0;
+    padding:12px 16px;
+    padding-top:calc(12px + env(safe-area-inset-top, 0px));
+    padding-left:calc(16px + env(safe-area-inset-left, 0px));
+    padding-right:calc(16px + env(safe-area-inset-right, 0px));
+  }
+
+  /* Compact dropdown instead of a tab row that wraps into multiple stacked rows —
+     shows only the current tab, expands into a short list on tap. */
+  .mobile-tab-toggle{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    order:3; width:100%; padding:10px 14px; margin-top:2px;
+    background:var(--sage-50); border:1.5px solid var(--paper-line); border-radius:10px;
+    font-family:var(--font-display); font-weight:600; font-size:.95rem; color:var(--ink); cursor:pointer;
+  }
+  .mobile-tab-toggle[aria-expanded="true"]{border-color:var(--brick); background:var(--paper);}
+  .mobile-tab-chevron{color:var(--ink-soft); transition:transform .15s ease; font-size:.8rem;}
+  .mobile-tab-toggle[aria-expanded="true"] .mobile-tab-chevron{transform:rotate(180deg); color:var(--brick);}
+
+  .tabs{
+    order:4; flex-direction:column; gap:4px;
+    position:absolute; top:100%; left:16px; right:16px; z-index:20;
+    background:var(--paper); border:1.5px solid var(--paper-line); border-radius:12px;
+    box-shadow:var(--shadow); padding:8px; margin-top:4px;
+    max-height:0; overflow:hidden; opacity:0; pointer-events:none;
+    transition:max-height .18s ease, opacity .15s ease;
+  }
+  .tabs.mobile-open{max-height:420px; opacity:1; pointer-events:auto;}
+  .tab-btn{
+    width:100%; text-align:left; padding:11px 12px;
+    border:1.5px solid transparent; border-radius:9px; background:transparent;
+  }
+  .tab-btn.active{background:var(--brick); color:#fff; border-color:var(--brick);}
+  .tab-btn:hover{color:inherit; background:var(--sage-50);}
+  .tab-btn.active:hover{background:var(--brick);}
+
+  /* Action-button rows (Sort by / Quick add / Import / + New...) — these were wrapping
+     unpredictably and looking cramped at phone width. Slim the buttons down and let the
+     row scroll sideways if it still doesn't all fit, rather than wrapping into a tall
+     stack. */
+  .panel-head-right{
+    flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
+    gap:8px; width:100%; padding-bottom:2px;
+  }
+  .panel-head-right .btn{padding:8px 12px; font-size:.8rem; white-space:nowrap; flex-shrink:0;}
+  .sort-select-wrap{flex-shrink:0; white-space:nowrap;}
+  .sort-select-wrap select{padding:6px 8px; font-size:.8rem;}
+
+  /* The shopping list and ingredient rows had a fixed minimum width wider than a phone
+     screen, so they silently overflowed to the right — that's what was reading as
+     "off-center, buffer on the left but not the right." Let them use the full width
+     instead of a fixed minimum. */
+  .shopping-list{grid-template-columns:1fr;}
+  .shop-item{flex-wrap:wrap;}
+  .shop-item .s-price-block{flex:1 0 100%; margin-top:8px; padding-left:42px;}
+  .ing-row{grid-template-columns:34px 1fr 62px 78px 24px; gap:6px; padding:8px 10px;}
+  .base-spice-list{grid-template-columns:1fr;}
+  .pantry-list{grid-template-columns:1fr;}
+}
+
+.meal-chip.note { border-style: dashed; background: transparent; }
+.meal-chip.note .chip-meta:empty { display: none; }
+
+@media (max-width:600px){
+  .pantry-item{flex-wrap:wrap;}
+  .pantry-item .p-name{flex-basis:calc(100% - 50px);}
+  .p-controls{margin-left:40px;}
+  .shop-review-row{grid-template-columns:34px 1fr;}
+  .sr-entry{grid-column:1 / 3;}
+  .sr-diff{grid-column:1 / 3;}
+}
+
+/* pantry card: name on top row, controls on their own row so nothing gets clipped */
+.pantry-item{flex-wrap:wrap; row-gap:8px;}
+.pantry-item .p-name{flex:1 1 calc(100% - 50px); min-width:0;}
+.p-controls{flex:1 1 100%; justify-content:flex-end; margin:0 !important; min-width:0;}
+.pantry-item input.p-qty{flex:1 1 60px; min-width:56px; max-width:110px; -moz-appearance:textfield; appearance:textfield;}
+.pantry-item input.p-qty::-webkit-outer-spin-button,.pantry-item input.p-qty::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
+.p-unit-select{flex:0 0 auto; width:auto; max-width:none; min-width:64px; padding:6px 8px;}
+.sr-entry .sr-qty{-moz-appearance:textfield; appearance:textfield;}
+.sr-entry .sr-qty::-webkit-outer-spin-button,.sr-entry .sr-qty::-webkit-inner-spin-button{-webkit-appearance:none; margin:0;}
