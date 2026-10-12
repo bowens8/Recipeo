@@ -72,13 +72,17 @@ NOT work — Firebase's auth/module setup requires an http(s) origin.
 
 ## 5. Deploy to GitHub Pages
 
-1. Create a new GitHub repo and push these files (`index.html`, `styles.css`, `app.js`, `firebase-config.js`) to the root of the `main` branch.
+1. Create a new GitHub repo and push these files to the root of the `main` branch:
+   `index.html`, `styles.css`, `app.js`, `firebase-config.js`, `manifest.json`,
+   `apple-touch-icon.png`, `favicon-32.png`, `icon-192.png`, `icon-512.png`.
 2. In the repo: **Settings → Pages → Build and deployment** → Source: **Deploy from a branch** → Branch: `main`, folder `/ (root)` → **Save**.
 3. GitHub gives you a URL like `https://yourname.github.io/your-repo/` after a minute or two.
 4. Back in Firebase console: **Authentication → Settings → Authorized domains** → **Add domain** → add `yourname.github.io` (Firebase blocks auth from unrecognized domains by default).
 
 That's it — visit your GitHub Pages URL, create an account (email/password, stored in
 your own Firebase project), and start adding ingredients, recipes, and a week of meals.
+On an iPhone, **Share → Add to Home Screen** gives it the carrot icon and opens full-screen
+like a real app, with no Safari address bar.
 
 ## Import detailed ingredient data from text
 
@@ -267,6 +271,37 @@ it saves you typing:
 Both features use the same built-in list — if you paste "bell pepper, cheddar cheese,
 lemon" you'll get all three fully filled in immediately.
 
+## Pantry: search, quick entry, and purchase review
+
+**Pantry tab.** Search by name (press Enter to jump straight to that item's amount, type a
+number, press Enter again to go back to search), filter to In stock / Not stocked, and use
+the − / + buttons for quick changes. Each row's unit dropdown is an "enter in" unit: switch
+a flour row from oz to cups and type "2" — it's converted and stored in the ingredient's own
+unit (needs grams per cup for weight ↔ volume).
+
+**Finishing a shopping trip.** "Add checked items to pantry & finish" now opens a review
+screen. Each checked item shows what was planned and what you're adding, editable in any
+unit, with a live note: *matches the plan*, *covers it, +X extra*, or *short X — remainder
+stays on your list*. Remove a line if you didn't actually get it, or search at the bottom to
+add something you bought that wasn't on the list. Unchecked and short items automatically stay
+on the shopping list because it recalculates from the pantry.
+
+## Ingredient issue report
+
+On the Ingredients tab, **🩺 Export issue report** downloads a JSON file listing every
+detectable ingredient problem — missing grams per cup, metric reference units, "each" items
+with no weight, recipe lines that can't convert (e.g. cups of something tracked in oz with no
+density), missing calories/aisle/prices — with each ingredient's full record. Send that
+file to Claude to get the fixes.
+
+## Planning notes (eating out, dinner at Mom's)
+
+For plans that aren't food you track — "Eating out", "Dinner at Mom's", "Skipping lunch" —
+use **Add meal → Note** and type whatever you like. It shows on the Week Plan as a dashed
+📝 chip with the meal-type icon, and can be dragged, reordered, edited, and removed like
+any other meal. Notes are purely labels: they never add calories, shopping-list items,
+or pantry changes, and they have no Cook button.
+
 ## Meal types, and quick (non-recipe) items
 
 Every meal you add to the Week Plan now gets a type — Breakfast 🍳, Lunch 🥪, Dinner 🍽️,
@@ -308,6 +343,15 @@ Tap the ♥ on any recipe card to favorite it (turns red) — favorites are your
 not shared with everyone else using this planner. The **Sort by** dropdown on the
 Recipes tab reorders the list: alphabetically, favorites first, calories (low–high), or
 **fewest missing from pantry** — handy for "what can I basically make right now?"
+
+## How many days the Week Plan shows
+
+The **Show** dropdown next to the week navigation lets you switch between 7, 10, or 14
+days at once — handy if you plan further ahead than a single week. The ← / → buttons
+step by whatever range is currently selected (14 days at a time if you're viewing 14
+days, not a fixed week), so you always move to a fresh, non-overlapping block. This is
+remembered per account, the same way store preferences are, so it stays put across
+devices and reloads.
 
 ## Cooking a planned meal at a different batch size
 
