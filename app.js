@@ -1423,6 +1423,7 @@ function renderWeekPlan(){
     const meals = mealsForDate(dateStr);
     let dayCal = 0;
     meals.forEach(m => {
+      if (m.type === 'note') return; // planning-only label: no calories
       if (m.type === 'quick'){
         const ing = state.ingredients[m.ingredientId];
         if (!ing) return;
@@ -1447,13 +1448,16 @@ function renderWeekPlan(){
 
     meals.forEach(m => {
       const chip = document.createElement('div');
-      chip.className = 'meal-chip' + (m.type==='leftover' ? ' leftover' : '');
+      chip.className = 'meal-chip' + (m.type==='leftover' ? ' leftover' : '') + (m.type==='note' ? ' note' : '');
       chip.draggable = true;
       chip.dataset.mealId = m.id;
       const typeIcon = MEAL_TYPE_ICON[m.mealType] || '';
 
       let titleHtml, metaText;
-      if (m.type === 'quick'){
+      if (m.type === 'note'){
+        titleHtml = `${typeIcon} 📝 ${escapeHtml(m.noteText || '')}`;
+        metaText = '';
+      } else if (m.type === 'quick'){
         const ing = state.ingredients[m.ingredientId];
         const qtyInIngUnit = ing ? convertToIngredientUnit(Number(m.qty)||0, m.unit||ing.unit, ing) : 0;
         titleHtml = `${typeIcon} <span class="chip-ing-icon">${ing ? ingredientIconHtml(ing) : ''}</span> ${escapeHtml(ing ? ing.name : '(deleted ingredient)')}`;
@@ -1578,6 +1582,7 @@ function syncComboDisplay(hiddenInput){
 document.getElementById('toggle-cook').addEventListener('click', ()=> setMealType('cook'));
 document.getElementById('toggle-leftover').addEventListener('click', ()=> setMealType('leftover'));
 document.getElementById('toggle-quick').addEventListener('click', ()=> setMealType('quick'));
+document.getElementById('toggle-note').addEventListener('click', ()=> setMealType('note'));
 
 function setMealType(type){
   document.getElementById('toggle-cook').classList.toggle('active', type==='cook');
@@ -1586,6 +1591,8 @@ function setMealType(type){
   document.getElementById('meal-cook-fields').classList.toggle('hidden', type!=='cook');
   document.getElementById('meal-leftover-fields').classList.toggle('hidden', type!=='leftover');
   document.getElementById('meal-quick-fields').classList.toggle('hidden', type!=='quick');
+  document.getElementById('toggle-note').classList.toggle('active', type==='note');
+  document.getElementById('meal-note-fields').classList.toggle('hidden', type!=='note');
   state.editing.mealType = type;
 }
 
@@ -1627,6 +1634,8 @@ function openMealModal(dateStr, mealId, presetType){
     } else if (m.type === 'leftover'){
       mealLeftoverSelect.value = m.sourceMealId;
       leftoverServingsInput.value = m.eatenServings;
+    } else if (m.type === 'note'){
+      document.getElementById('meal-note-text').value = m.noteText || '';
     } else { // quick
       const ing = state.ingredients[m.ingredientId];
       mealQuickUnitSelect.innerHTML = unitOptionsHtml(m.unit || (ing?ing.unit:'g'), ing);
@@ -1640,6 +1649,7 @@ function openMealModal(dateStr, mealId, presetType){
     document.getElementById('meal-modal-title').textContent = presetType === 'quick' ? 'Log a food' : 'Add meal';
     mealTypeSelect.value = presetType === 'quick' ? 'snack' : 'dinner';
     setMealType(presetType || 'cook');
+    document.getElementById('meal-note-text').value = '';
     batchServingsInput.value = 4;
     eatenServingsInput.value = 4;
     leftoverServingsInput.value = 1;
@@ -1680,6 +1690,16 @@ document.getElementById('save-meal-btn').addEventListener('click', async ()=>{
       recipeId: source.recipeId,
       sourceMealId: mealLeftoverSelect.value,
       eatenServings: Number(leftoverServingsInput.value)||0,
+      createdAt: serverTimestamp()
+    };
+  } else if (type === 'note'){
+    const noteText = document.getElementById('meal-note-text').value.trim();
+    if (!noteText){ toast('Type what the plan is'); return; }
+    data = {
+      date: state.editing.mealDate,
+      type: 'note',
+      mealType,
+      noteText,
       createdAt: serverTimestamp()
     };
   } else { // quick
@@ -1817,6 +1837,7 @@ function renderShoppingList(){
 
   Object.values(state.mealPlan).forEach(m => {
     if (dates && !dates.includes(m.date)) return;
+    if (m.type === 'note') return;
 
     if (m.type === 'quick'){
       const ing = state.ingredients[m.ingredientId];
@@ -1958,7 +1979,7 @@ function renderShoppingList(){
 
     const breakdown = ing.isBlend ? blendBreakdownHtml(ing, neededQtyInIngUnit) : '';
     return `${aisleHeaderHtml}<div class="shop-item-wrap">
-      <label class="shop-item" data-ing="${id}">
+      <label class="shop-item" data-ing="${id}" data-need="${neededQtyInIngUnit}">
         <input type="checkbox" class="shop-check" data-ing="${id}" />
         <span class="s-emoji">${ingredientIconHtml(ing)}</span>
         <span class="s-name">${escapeHtml(ing.name)}</span>
@@ -2042,31 +2063,129 @@ function updateShoppingModeCount(){
   shoppingModeCount.textContent = `${checked} item${checked!==1?'s':''} checked`;
 }
 
-document.getElementById('finish-shopping-btn').addEventListener('click', async ()=>{
+// ---- Purchase review: reconcile what was checked off with what was actually bought ----
+let shopReview = []; // [{ingId, need, qty (in entry unit), unit, extra}]
+function shopReviewBaseQty(r){
+  const ing = state.ingredients[r.ingId];
+  if (!ing) return null;
+  if (r.unit === ing.unit) return Number(r.qty)||0;
+  return convertToIngredientUnit(Number(r.qty)||0, r.unit, ing);
+}
+function renderShopReview(){
+  const box = document.getElementById('shop-review-rows');
+  box.innerHTML = shopReview.map((r, i)=>{
+    const ing = state.ingredients[r.ingId];
+    if (!ing) return '';
+    const ownLabel = UNIT_LABEL[ing.unit]||ing.unit;
+    const needTxt = r.extra ? '<span class="sr-need extra">not on list</span>'
+      : `<span class="sr-need">planned: ${formatQty(r.need)} ${ownLabel}</span>`;
+    return `<div class="shop-review-row" data-i="${i}">
+      <span class="s-emoji">${ingredientIconHtml(ing)}</span>
+      <span class="sr-name">${escapeHtml(ing.name)}${needTxt}</span>
+      <span class="sr-entry">
+        <input type="number" class="sr-qty" inputmode="decimal" min="0" step="any" value="${r.qty}" />
+        <select class="sr-unit">${unitOptionsHtml(r.unit, ing)}</select>
+        <button type="button" class="icon-btn sr-remove" aria-label="Remove">✕</button>
+      </span>
+      <span class="sr-diff"></span>
+    </div>`;
+  }).join('') || '<p class="shop-empty">Nothing to add yet.</p>';
+  updateShopReviewDiffs();
+}
+function updateShopReviewDiffs(){
+  let short = 0;
+  document.querySelectorAll('#shop-review-rows .shop-review-row').forEach(row=>{
+    const r = shopReview[Number(row.dataset.i)]; if (!r) return;
+    const ing = state.ingredients[r.ingId];
+    const el = row.querySelector('.sr-diff');
+    const base = shopReviewBaseQty(r);
+    el.className = 'sr-diff';
+    if (base === null){ el.textContent = "Can't convert this unit — set grams per cup on the ingredient"; el.classList.add('bad'); return; }
+    if (r.extra || !(r.need > 0)){ el.textContent = `adds ${formatQty(base)} ${UNIT_LABEL[ing.unit]||ing.unit} to pantry`; return; }
+    const diff = base - r.need;
+    const own = UNIT_LABEL[ing.unit]||ing.unit;
+    if (base <= 0){ el.textContent = 'not bought — stays on your list'; el.classList.add('short'); short++; }
+    else if (diff < -CLOSE_ENOUGH){ el.textContent = `short ${formatQty(-diff)} ${own} — remainder stays on your list`; el.classList.add('short'); short++; }
+    else if (diff > CLOSE_ENOUGH){ el.textContent = `covers it, +${formatQty(diff)} ${own} extra goes to pantry`; el.classList.add('ok'); }
+    else { el.textContent = 'matches the plan'; el.classList.add('ok'); }
+  });
+  const unchecked = document.querySelectorAll('#shopping-list .shop-check:not(:checked)').length;
+  document.getElementById('shop-review-footer').textContent =
+    `${unchecked} unchecked item${unchecked!==1?'s':''} will stay on your list` + (short ? ` · ${short} bought short` : '') + '.';
+}
+document.getElementById('finish-shopping-btn').addEventListener('click', ()=>{
   const checkedBoxes = Array.from(document.querySelectorAll('#shopping-list .shop-check:checked'));
   if (checkedBoxes.length === 0){ toast('Check off what you bought first'); return; }
+  shopReview = checkedBoxes.map(cb=>{
+    const item = cb.closest('.shop-item');
+    const ing = state.ingredients[cb.dataset.ing];
+    const qtyInput = item.querySelector('.pantry-qty-input');
+    return {
+      ingId: cb.dataset.ing,
+      need: Number(item.dataset.need)||0,
+      qty: Number(qtyInput ? qtyInput.value : 0) || 0,
+      unit: ing ? ing.unit : 'each',
+      extra: false
+    };
+  });
+  renderShopReview();
+  openModal('shop-review-modal');
+});
+(function wireShopReview(){
+  const box = document.getElementById('shop-review-rows');
+  box.addEventListener('input', (e)=>{
+    const row = e.target.closest('.shop-review-row'); if (!row) return;
+    const r = shopReview[Number(row.dataset.i)];
+    if (e.target.classList.contains('sr-qty')) r.qty = e.target.value;
+    updateShopReviewDiffs();
+  });
+  box.addEventListener('change', (e)=>{
+    const row = e.target.closest('.shop-review-row'); if (!row) return;
+    const r = shopReview[Number(row.dataset.i)];
+    if (e.target.classList.contains('sr-unit')){ r.unit = e.target.value; updateShopReviewDiffs(); }
+  });
+  box.addEventListener('click', (e)=>{
+    const rm = e.target.closest('.sr-remove'); if (!rm) return;
+    const i = Number(rm.closest('.shop-review-row').dataset.i);
+    shopReview.splice(i, 1);
+    renderShopReview();
+  });
+  box.addEventListener('focusin', (e)=>{ if (e.target.classList.contains('sr-qty')) e.target.select(); });
 
-  const writes = checkedBoxes.map(cb => {
-    const ingId = cb.dataset.ing;
-    // Read from the editable "add X to pantry" field next to this item — pre-filled
-    // with the computed amount, but the person may have adjusted it (e.g. the store
-    // only had a 16 oz package instead of the usual 12 oz).
-    const qtyInput = cb.closest('.shop-item').querySelector('.pantry-qty-input');
-    const boughtQty = Number(qtyInput ? qtyInput.value : 0) || 0;
-    const currentHave = Number(state.pantry[ingId]?.qty) || 0;
-    return setDoc(doc(db,'users',state.uid,'pantry', ingId), { qty: currentHave + boughtQty });
+  const extraCombo = document.getElementById('shop-extra-combo');
+  const extraHidden = document.getElementById('shop-extra-ingredient');
+  mountIngredientCombo(extraCombo, '#shop-extra-ingredient');
+  extraHidden.addEventListener('change', ()=>{
+    const id = extraHidden.value; const ing = state.ingredients[id];
+    if (!ing) return;
+    shopReview.push({ ingId:id, need:0, qty:1, unit:ing.unit, extra:true });
+    extraHidden.value = '';
+    extraCombo.querySelector('.ing-combo-search').value = '';
+    renderShopReview();
+    const qtys = box.querySelectorAll('.sr-qty');
+    const last = qtys[qtys.length-1]; if (last){ last.focus(); last.select(); }
   });
 
-  await Promise.all(writes);
-  toast(`Added ${checkedBoxes.length} item${checkedBoxes.length!==1?'s':''} to your pantry`);
-
-  // Exit shopping mode — the list re-renders itself once the pantry snapshot comes back,
-  // and purchased items drop off automatically since they're now covered.
-  state.shoppingMode = false;
-  shoppingModeBtn.textContent = 'Start Shopping';
-  shoppingModeBar.classList.add('hidden');
-  document.getElementById('shopping-list').classList.remove('mode-active');
-});
+  document.getElementById('shop-review-cancel').addEventListener('click', closeModals);
+  document.getElementById('shop-review-confirm').addEventListener('click', async ()=>{
+    const totals = {};
+    for (const r of shopReview){
+      const base = shopReviewBaseQty(r);
+      if (base === null){ toast("Fix the unit that can't convert first"); return; }
+      if (base > 0) totals[r.ingId] = (totals[r.ingId]||0) + base;
+    }
+    const ids = Object.keys(totals);
+    if (ids.length === 0){ toast('Nothing to add — enter what you bought'); return; }
+    await Promise.all(ids.map(id => writePantryQty(id, (Number(state.pantry[id]?.qty)||0) + totals[id])));
+    closeModals();
+    toast(`Added ${ids.length} item${ids.length!==1?'s':''} to your pantry`);
+    state.shoppingMode = false;
+    shoppingModeBtn.textContent = 'Start Shopping';
+    shoppingModeBtn.classList.add('btn-ghost');
+    shoppingModeBar.classList.add('hidden');
+    document.getElementById('shopping-list').classList.remove('mode-active');
+  });
+})();
 
 /* ============================================================
    RENDER: RECIPES
@@ -2588,6 +2707,101 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
 /* ============================================================
    DETAILED INGREDIENT DATA IMPORTER — modal wiring
    ============================================================ */
+
+// ---- Ingredient issue report ------------------------------------------------------
+// Builds a JSON file listing every ingredient problem the app can detect (unit/density
+// gaps that block conversions, recipe lines that can't convert, odd units, missing
+// data) with the full ingredient record, so the file can be sent to Claude to fix.
+function buildIngredientIssueReport(){
+  const ings = state.ingredients;
+  const byId = {};
+  const add = (id, issue) => {
+    const ing = ings[id];
+    if (!byId[id]) byId[id] = {
+      id, name: ing ? ing.name : '(deleted ingredient)',
+      record: ing ? {
+        unit: ing.unit, calories: ing.calories, gramsPerCup: ing.gramsPerCup || 0,
+        gramsPerEach: ing.gramsPerEach || 0, savedAisle: ing.category || null,
+        inferredAisle: ing ? inferGroceryCategory(ing) : null,
+        packaged: !!ing.packaged,
+        customUnits: ing.customUnits || [], prices: ing.prices || {},
+        needsReview: !!ing.needsReview, isBlend: !!(ing.blendComponents && ing.blendComponents.length)
+      } : null,
+      issues: []
+    };
+    byId[id].issues.push(issue);
+  };
+
+  Object.entries(ings).forEach(([id, ing]) => {
+    if (!(Number(ing.calories) > 0)) add(id, { type:'missing_calories', detail:'Calories not set' });
+    if (!(Number(ing.gramsPerCup) > 0)) add(id, { type:'missing_grams_per_cup', detail:'gramsPerCup is 0/blank, so cup/tbsp/tsp <-> weight conversions fail' });
+    if (['g','kg','ml','l'].includes(ing.unit)) add(id, { type:'metric_reference_unit', detail:`Tracked in "${ing.unit}" — expected an American unit (oz, lb, cup, fl oz, tbsp, tsp, each)` });
+    if (ing.unit === 'each' && !(Number(ing.gramsPerEach) > 0)) add(id, { type:'each_without_weight', detail:'Counted as "each" but gramsPerEach is not set, so recipes using weight/volume cannot convert' });
+    if (!ing.category) add(id, { type:'no_saved_aisle', detail:`No saved grocery aisle (guessing "${inferGroceryCategory(ing)}")` });
+    const noPrice = STORES.filter(s => !(ing.prices && ing.prices[s] && Number(ing.prices[s].price) > 0));
+    if (noPrice.length) add(id, { type:'missing_prices', detail:`No price at: ${noPrice.join(', ')}` });
+  });
+
+  // Recipe lines whose unit can't be converted into the ingredient's own unit.
+  const recipeLines = [];
+  Object.entries(state.recipes).forEach(([rid, r]) => {
+    (r.ingredients || []).forEach(ri => {
+      const ing = ings[ri.ingredientId];
+      if (!ing){
+        recipeLines.push({ recipe: r.name, ingredientId: ri.ingredientId, problem:'ingredient deleted/missing', qty: ri.qty, unit: ri.unit });
+        return;
+      }
+      const unit = ri.unit || ing.unit;
+      const conv = convertToIngredientUnit(Number(ri.qty)||0, unit, ing);
+      if (conv === null){
+        const problem = `Cannot convert ${formatQty(Number(ri.qty)||0)} ${unit} into ${ing.unit}`;
+        recipeLines.push({ recipe: r.name, ingredient: ing.name, ingredientId: ri.ingredientId, qty: ri.qty, unit, ingredientUnit: ing.unit, problem });
+        add(ri.ingredientId, { type:'recipe_unit_unconvertible', detail:`${r.name}: ${problem}` });
+      } else if (['g','kg','ml','l'].includes(unit)){
+        add(ri.ingredientId, { type:'recipe_uses_metric', detail:`${r.name}: written as ${formatQty(Number(ri.qty)||0)} ${unit}` });
+      }
+    });
+  });
+
+  // Logged quick items and pantry quantities that can't convert.
+  Object.values(state.mealPlan).forEach(m => {
+    if (m.type !== 'quick') return;
+    const ing = ings[m.ingredientId];
+    if (!ing) return;
+    if (convertToIngredientUnit(Number(m.qty)||0, m.unit || ing.unit, ing) === null){
+      add(m.ingredientId, { type:'quick_item_unconvertible', detail:`Logged ${m.qty} ${m.unit} on ${m.date}; cannot convert to ${ing.unit}` });
+    }
+  });
+
+  const list = Object.values(byId);
+  list.forEach(e => { e.severity = e.issues.some(i => /unconvertible|each_without|metric_reference|missing_grams|missing_calories/.test(i.type)) ? 'high' : 'low'; });
+  list.sort((a,b)=> (a.severity===b.severity ? a.name.localeCompare(b.name) : a.severity==='high' ? -1 : 1));
+  const counts = {};
+  list.forEach(e => e.issues.forEach(i => counts[i.type] = (counts[i.type]||0) + 1));
+  return {
+    app: 'RecipeMe', reportType: 'ingredient-issues', generatedAt: new Date().toISOString(),
+    totals: { ingredients: Object.keys(ings).length, ingredientsWithIssues: list.length, issueCounts: counts },
+    unconvertibleRecipeLines: recipeLines,
+    ingredients: list
+  };
+}
+document.getElementById('export-issues-btn').addEventListener('click', ()=>{
+  try{
+    const report = buildIngredientIssueReport();
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `recipeme-ingredient-issues-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 2000);
+    toast(`Report saved — ${report.totals.ingredientsWithIssues} ingredient(s) with issues`);
+  } catch(err){
+    console.error('Issue report failed:', err);
+    toast("Couldn't build the report — see console");
+  }
+});
+
 document.getElementById('import-ingredient-btn').addEventListener('click', ()=>{
   document.getElementById('import-ing-textarea').value = '';
   document.getElementById('import-ing-file-input').value = '';
@@ -3434,15 +3648,47 @@ document.getElementById('delete-recipe-btn').addEventListener('click', async ()=
 /* ============================================================
    RENDER: PANTRY
    ============================================================ */
+// Per-row "enter in" unit for the pantry (display/entry only — amounts are always stored
+// in the ingredient's own unit). Survives re-renders.
+const pantryEntryUnit = {};
+function pantryStepFor(unit){
+  return ({ each:1, cup:0.5, tbsp:1, tsp:1, floz:1, oz:1, lb:0.5, g:50, kg:0.5, ml:50, l:0.5 })[unit] || 1;
+}
+function roundPantry(n){ return Math.round(n * 10000) / 10000; }
+async function writePantryQty(id, qty){
+  qty = roundPantry(qty);
+  if (!(qty > 0)){
+    delete state.pantry[id];
+    await deleteDoc(doc(db,'users',state.uid,'pantry', id)).catch(()=>{});
+  } else {
+    state.pantry[id] = { ...(state.pantry[id]||{}), qty };
+    await setDoc(doc(db,'users',state.uid,'pantry', id), { qty });
+  }
+}
 function renderPantry(){
   const container = document.getElementById('pantry-list');
   let entries = Object.entries(state.ingredients);
   if (entries.length===0){
     container.innerHTML = '<p class="shop-empty">Add ingredients in the Ingredients tab first, then mark what you have here.</p>';
+    document.getElementById('pantry-summary').textContent = '';
     return;
   }
 
   const sortMode = document.getElementById('pantry-sort-select').value || 'name-asc';
+  const filterMode = document.getElementById('pantry-filter-select').value || 'all';
+  const q = (document.getElementById('pantry-search').value || '').trim().toLowerCase();
+  const stockedCount = entries.filter(([id]) => Number(state.pantry[id]?.qty) > 0).length;
+
+  entries = entries.filter(([id, ing]) => {
+    const have = Number(state.pantry[id]?.qty) > 0;
+    if (filterMode === 'stocked' && !have) return false;
+    if (filterMode === 'empty' && have) return false;
+    if (q && !(ing.name||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  document.getElementById('pantry-summary').textContent =
+    `${stockedCount} in stock · showing ${entries.length}`;
+
   entries = entries.slice().sort(([idA, a], [idB, b]) => {
     switch (sortMode){
       case 'stocked-first': {
@@ -3460,6 +3706,11 @@ function renderPantry(){
     }
   });
 
+  if (entries.length === 0){
+    container.innerHTML = '<p class="shop-empty">Nothing matches.</p>';
+    return;
+  }
+
   let lastAisleCategory = null;
   container.innerHTML = entries.map(([id, ing]) => {
     let aisleHeaderHtml = '';
@@ -3470,27 +3721,110 @@ function renderPantry(){
         aisleHeaderHtml = `<div class="shop-aisle-header">${escapeHtml(cat)}</div>`;
       }
     }
-    const qty = state.pantry[id]?.qty ?? '';
-    return `${aisleHeaderHtml}<div class="pantry-item" data-id="${id}">
+    const baseQty = Number(state.pantry[id]?.qty) || 0;
+    let entryUnit = pantryEntryUnit[id] || ing.unit;
+    let shown = baseQty;
+    if (entryUnit !== ing.unit){
+      const c = convertFromIngredientUnit(baseQty, entryUnit, ing);
+      const c2 = c !== null ? c : convertQty(baseQty, ing.unit, entryUnit, ing.gramsPerCup, ing.gramsPerEach);
+      if (c2 === null){ entryUnit = ing.unit; delete pantryEntryUnit[id]; }
+      else shown = c2;
+    }
+    const valueAttr = baseQty > 0 ? roundPantry(shown) : '';
+    return `${aisleHeaderHtml}<div class="pantry-item${baseQty>0?' stocked':''}" data-id="${id}">
       <span class="p-emoji">${ingredientIconHtml(ing)}</span>
       <span class="p-name">${escapeHtml(ing.name)}</span>
-      <input type="number" class="p-qty" min="0" step="any" value="${qty}" placeholder="0" />
-      <span class="p-unit">${UNIT_LABEL[ing.unit]||ing.unit}</span>
+      <span class="p-controls">
+        <button type="button" class="p-step p-minus" aria-label="Less">−</button>
+        <input type="number" inputmode="decimal" class="p-qty" min="0" step="any" value="${valueAttr}" placeholder="0" />
+        <button type="button" class="p-step p-plus" aria-label="More">+</button>
+        <select class="p-unit-select" aria-label="Unit">${unitOptionsHtml(entryUnit, ing)}</select>
+      </span>
     </div>`;
   }).join('');
-
-  container.querySelectorAll('.p-qty').forEach(input=>{
-    input.addEventListener('change', async (e)=>{
-      const id = e.target.closest('.pantry-item').dataset.id;
-      const val = Number(e.target.value);
-      if (!val || val<=0){
-        await deleteDoc(doc(db,'users',state.uid,'pantry', id)).catch(()=>{});
-      } else {
-        await setDoc(doc(db,'users',state.uid,'pantry', id), { qty: val });
-      }
-    });
-  });
 }
+
+// Convert an amount typed in the row's chosen unit into the ingredient's own unit.
+function pantryRowToBase(id, amount){
+  const ing = state.ingredients[id];
+  const unit = pantryEntryUnit[id] || ing.unit;
+  if (unit === ing.unit) return amount;
+  return convertToIngredientUnit(amount, unit, ing);
+}
+(function wirePantry(){
+  const container = document.getElementById('pantry-list');
+  const refreshRow = (row, id)=>{
+    const ing = state.ingredients[id];
+    const base = Number(state.pantry[id]?.qty) || 0;
+    const unit = pantryEntryUnit[id] || ing.unit;
+    let shown = base;
+    if (unit !== ing.unit){
+      const c = convertFromIngredientUnit(base, unit, ing);
+      shown = c !== null ? c : convertQty(base, ing.unit, unit, ing.gramsPerCup, ing.gramsPerEach);
+    }
+    row.querySelector('.p-qty').value = base > 0 && shown !== null ? roundPantry(shown) : '';
+    row.classList.toggle('stocked', base > 0);
+  };
+  container.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('.p-step');
+    if (!btn) return;
+    const row = btn.closest('.pantry-item'); const id = row.dataset.id;
+    const ing = state.ingredients[id]; if (!ing) return;
+    const unit = pantryEntryUnit[id] || ing.unit;
+    const delta = pantryStepFor(unit) * (btn.classList.contains('p-plus') ? 1 : -1);
+    const stepBase = pantryRowToBase(id, Math.abs(delta));
+    if (stepBase === null){ toast("Can't convert that unit — set grams per cup on the ingredient"); return; }
+    const next = Math.max(0, (Number(state.pantry[id]?.qty)||0) + Math.sign(delta) * stepBase);
+    await writePantryQty(id, next);
+    refreshRow(row, id);
+  });
+  container.addEventListener('change', async (e)=>{
+    const row = e.target.closest('.pantry-item'); if (!row) return;
+    const id = row.dataset.id; const ing = state.ingredients[id]; if (!ing) return;
+    if (e.target.classList.contains('p-unit-select')){
+      const prev = pantryEntryUnit[id] || ing.unit;
+      pantryEntryUnit[id] = e.target.value;
+      const base = Number(state.pantry[id]?.qty) || 0;
+      const test = base > 0 ? (e.target.value === ing.unit ? base : (convertFromIngredientUnit(base, e.target.value, ing) ?? convertQty(base, ing.unit, e.target.value, ing.gramsPerCup, ing.gramsPerEach))) : 0;
+      if (test === null){
+        toast("Can't convert to that unit — set grams per cup on the ingredient");
+        pantryEntryUnit[id] = prev; e.target.value = prev;
+        return;
+      }
+      refreshRow(row, id);
+    } else if (e.target.classList.contains('p-qty')){
+      const val = Number(e.target.value);
+      if (!val || val <= 0){ await writePantryQty(id, 0); refreshRow(row, id); return; }
+      const base = pantryRowToBase(id, val);
+      if (base === null){
+        toast("Can't convert that unit — set grams per cup on the ingredient");
+        refreshRow(row, id); return;
+      }
+      await writePantryQty(id, base);
+      refreshRow(row, id);
+    }
+  });
+  container.addEventListener('focusin', (e)=>{
+    if (e.target.classList.contains('p-qty')) e.target.select();
+  });
+  const search = document.getElementById('pantry-search');
+  search.addEventListener('input', renderPantry);
+  search.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      const first = container.querySelector('.p-qty');
+      if (first){ first.focus(); first.select(); }
+    }
+  });
+  container.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter' && e.target.classList.contains('p-qty')){
+      e.preventDefault();
+      e.target.blur();               // commits the change
+      search.focus(); search.select(); // ready for the next ingredient
+    }
+  });
+  document.getElementById('pantry-filter-select').addEventListener('change', renderPantry);
+})();
 document.getElementById('pantry-sort-select').addEventListener('change', renderPantry);
 
 /* ============================================================
