@@ -271,6 +271,14 @@ it saves you typing:
 Both features use the same built-in list — if you paste "bell pepper, cheddar cheese,
 lemon" you'll get all three fully filled in immediately.
 
+## Shopping list: "Show all ingredients"
+
+The **👁 Show all ingredients** button on the Shopping List tab reveals every ingredient the
+planned meals need for the selected range — regardless of the pantry — with how much of each is
+already in your pantry and what's still to buy (*Covered by pantry*, *Partly in pantry*, or
+*Not in pantry*). It follows the same range and sort as the list; the button hides it again, and
+your choice is remembered on that device.
+
 ## Pantry: search, quick entry, and purchase review
 
 **Pantry tab.** Search by name (press Enter to jump straight to that item's amount, type a
@@ -293,6 +301,12 @@ detectable ingredient problem — missing grams per cup, metric reference units,
 with no weight, recipe lines that can't convert (e.g. cups of something tracked in oz with no
 density), missing calories/aisle/prices — with each ingredient's full record. Send that
 file to Claude to get the fixes.
+
+On sign-in the app also runs a one-time, safe auto-fill: ingredients with a blank grams-per-cup or
+grams-per-each get a typical value from a built-in table (existing values are never overwritten;
+autofilled records carry an `autoFilled` marker), and eggs, scallions, cucumber and garlic cloves
+that had per-gram data are repaired. Import prompts now require grams_per_cup (and grams_per_each
+for countable items) so new ingredients arrive complete.
 
 ## Planning notes (eating out, dinner at Mom's)
 
