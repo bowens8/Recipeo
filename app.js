@@ -1926,6 +1926,87 @@ function cheapestOption(ing, neededQtyInIngUnit){
   return best;
 }
 
+
+// ---- "Show all ingredients" view: everything the planned meals need, regardless of pantry ----
+let shoppingShowAll = false;
+try { shoppingShowAll = localStorage.getItem('recipeme.shoppingShowAll') === '1'; } catch(e){}
+function renderShoppingAllNeeds(totalBase, remainingBase, warnRows){
+  const box = document.getElementById('shopping-all-needs');
+  const btn = document.getElementById('shopping-all-toggle');
+  if (!box || !btn) return;
+  btn.textContent = shoppingShowAll ? '🙈 Hide all ingredients' : '👁 Show all ingredients';
+  btn.setAttribute('aria-expanded', shoppingShowAll ? 'true' : 'false');
+  box.classList.toggle('hidden', !shoppingShowAll);
+  if (!shoppingShowAll) return;
+
+  const ids = Object.keys(totalBase).filter(id => state.ingredients[id]);
+  if (ids.length === 0 && (!warnRows || warnRows.length === 0)){
+    box.innerHTML = '<h3 class="all-needs-title">All ingredients for these meals</h3><p class="shop-empty">No meals planned in this range yet.</p>';
+    return;
+  }
+  const sortMode = document.getElementById('shopping-sort-select').value || 'default';
+  ids.sort((a,b)=>{
+    const ia = state.ingredients[a], ib = state.ingredients[b];
+    if (sortMode === 'aisle'){
+      const d = GROCERY_CATEGORY_ORDER.indexOf(inferGroceryCategory(ia)) - GROCERY_CATEGORY_ORDER.indexOf(inferGroceryCategory(ib));
+      if (d !== 0) return d;
+    }
+    return (ia.name||'').localeCompare(ib.name||'');
+  });
+
+  let inPantryCount = 0, partialCount = 0, buyCount = 0;
+  let lastCat = null;
+  const rowsHtml = ids.map(id => {
+    const ing = state.ingredients[id];
+    const cat = unitCategory(ing.unit);
+    const oneUnit = toBaseUnit(1, ing.unit) || 1;
+    const totalQty = totalBase[id] / oneUnit;
+    const stillQty = (remainingBase[id] || 0) / oneUnit;
+    const haveQty = Number(state.pantry[id]?.qty) || 0;
+    const fromPantryQty = Math.max(0, Math.min(haveQty, totalQty));
+    const fmt = (qtyInIngUnit)=>{
+      const { unit, qty } = pickDisplayUnit(qtyInIngUnit * oneUnit, cat, ing.unit);
+      return `${formatQty(qty)} ${UNIT_LABEL[unit]||unit}`;
+    };
+    let status, cls;
+    if (stillQty < CLOSE_ENOUGH){ status = '✓ Covered by pantry'; cls = 'covered'; inPantryCount++; }
+    else if (fromPantryQty >= CLOSE_ENOUGH){ status = `Partly in pantry — buy ${fmt(stillQty)}`; cls = 'partial'; partialCount++; }
+    else { status = `Not in pantry — buy ${fmt(stillQty)}`; cls = 'buy'; buyCount++; }
+    let header = '';
+    if (sortMode === 'aisle'){
+      const c = inferGroceryCategory(ing);
+      if (c !== lastCat){ lastCat = c; header = `<div class="shop-aisle-header">${escapeHtml(c)}</div>`; }
+    }
+    return `${header}<div class="all-needs-row ${cls}">
+      <span class="s-emoji">${ingredientIconHtml(ing)}</span>
+      <span class="s-name">${escapeHtml(ing.name)}</span>
+      <span class="an-nums">
+        <span class="an-total">Needs ${fmt(totalQty)}</span>
+        <span class="an-have">${fromPantryQty >= CLOSE_ENOUGH ? `${fmt(fromPantryQty)} from pantry` : 'none in pantry'}</span>
+      </span>
+      <span class="an-status">${status}</span>
+    </div>`;
+  }).join('');
+
+  const warnHtml = (warnRows||[]).map(w => {
+    const ing = state.ingredients[w.ingredientId]; if (!ing) return '';
+    return `<div class="all-needs-row buy"><span class="s-emoji">${ingredientIconHtml(ing)}</span>
+      <span class="s-name">${escapeHtml(ing.name)}</span>
+      <span class="an-nums"><span class="an-total">Needs ${formatQty(w.qty)} ${UNIT_LABEL[w.unit]||w.unit}</span><span class="an-have">different unit — can't compare to pantry</span></span>
+      <span class="an-status">See list above</span></div>`;
+  }).join('');
+
+  box.innerHTML = `<h3 class="all-needs-title">All ingredients for these meals</h3>
+    <p class="all-needs-sub">Everything the planned meals call for, no matter what's in your pantry —
+      <strong>${inPantryCount}</strong> covered, <strong>${partialCount}</strong> partly covered, <strong>${buyCount}</strong> to buy.</p>
+    ${rowsHtml}${warnHtml}`;
+}
+document.getElementById('shopping-all-toggle').addEventListener('click', ()=>{
+  shoppingShowAll = !shoppingShowAll;
+  try { localStorage.setItem('recipeme.shoppingShowAll', shoppingShowAll ? '1' : '0'); } catch(e){}
+  renderShoppingList();
+});
+
 function renderShoppingList(){
   const container = document.getElementById('shopping-list');
   const totalEl = document.getElementById('shopping-total');
@@ -1983,6 +2064,7 @@ function renderShoppingList(){
     });
   });
 
+  const totalNeededBase = { ...neededBase }; // before the pantry is subtracted
   // subtract pantry (pantry is tracked in each ingredient's own reference unit)
   Object.keys(neededBase).forEach(ingId => {
     const ing = state.ingredients[ingId];
@@ -2003,6 +2085,7 @@ function renderShoppingList(){
     return neededQtyInIngUnit >= CLOSE_ENOUGH;
   });
   const warnRows = Object.values(unconverted).filter(r => r.qty >= CLOSE_ENOUGH);
+  renderShoppingAllNeeds(totalNeededBase, neededBase, warnRows);
 
   if (rows.length === 0 && warnRows.length === 0){
     container.innerHTML = '<p class="shop-empty">Nothing to buy — plan some meals this week, or your pantry already covers it.</p>';
@@ -4537,4 +4620,3 @@ document.getElementById('crop-confirm-btn').addEventListener('click', ()=>{
   }
 });
 document.getElementById('crop-cancel-btn').addEventListener('click', hideCropOverlay);
-
